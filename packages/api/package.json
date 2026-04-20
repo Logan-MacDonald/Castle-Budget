@@ -18,6 +18,8 @@
     "@fastify/jwt": "^8.0.1",
     "@prisma/client": "^5.14.0",
     "bcrypt": "^5.1.1",
+    "date-fns": "^4.1.0",
+    "decimal.js": "^10.6.0",
     "fastify": "^4.27.0",
     "zod": "^3.23.8"
   },
