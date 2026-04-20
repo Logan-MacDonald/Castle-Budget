@@ -1,15 +1,10 @@
 node_modules/
 dist/
 .env
-*.db
-*.db-journal
-*.db-shm
-*.db-wal
+.env.*
+!.env.example
 
-# Prisma
-packages/api/prisma/migrations/dev.db*
-
-# Build
+# Build output
 packages/web/dist/
 packages/api/dist/
 
