@@ -5,7 +5,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -37,7 +37,7 @@ model Account {
   name        String
   institution String?
   type        AccountType
-  balance     Float       @default(0)
+  balance     Decimal     @default(0) @db.Decimal(12, 2)
   isActive    Boolean     @default(true)
   isBusiness  Boolean     @default(false)
   notes       String?
@@ -65,7 +65,7 @@ model IncomeSource {
   id         String     @id @default(cuid())
   name       String
   owner      String     // "Logan" | "Carla" | "Shared"
-  amount     Float
+  amount     Decimal    @db.Decimal(12, 2)
   payPeriod  PayPeriod
   isActive   Boolean    @default(true)
   isBusiness Boolean    @default(false)
@@ -75,12 +75,12 @@ model IncomeSource {
 }
 
 enum PayPeriod {
-  FIRST         // 1st of month
-  FIFTEENTH     // 15th of month
-  BOTH          // both pay periods
-  MONTHLY       // once per month, non-standard date
-  ANNUAL        // annual/bonus
-  VARIABLE      // variable
+  FIRST
+  FIFTEENTH
+  BOTH
+  MONTHLY
+  ANNUAL
+  VARIABLE
 }
 
 // ─── Bills ───────────────────────────────────────────────────────────────────
@@ -88,13 +88,13 @@ enum PayPeriod {
 model Bill {
   id          String       @id @default(cuid())
   name        String
-  amount      Float
-  dueDay      Int          // 1-31, day of month
+  amount      Decimal      @db.Decimal(12, 2)
+  dueDay      Int
   category    BillCategory
   autoPay     Boolean      @default(false)
   isActive    Boolean      @default(true)
   isBusiness  Boolean      @default(false)
-  payPeriod   PayPeriod    // which paycheck covers this
+  payPeriod   PayPeriod
   accountId   String?
   notes       String?
   createdAt   DateTime     @default(now())
@@ -107,12 +107,12 @@ model Bill {
 model BillPayment {
   id        String    @id @default(cuid())
   billId    String
-  month     Int       // 1-12
+  month     Int
   year      Int
   paidAt    DateTime?
   isPaid    Boolean   @default(false)
   paidById  String?
-  amount    Float?    // actual amount paid (may differ from bill.amount)
+  amount    Decimal?  @db.Decimal(12, 2)
   notes     String?
   createdAt DateTime  @default(now())
 
@@ -143,11 +143,11 @@ model Debt {
   name            String
   institution     String?
   type            DebtType
-  originalBalance Float
-  currentBalance  Float
-  interestRate    Float      // APR as decimal (0.2399 = 23.99%)
-  minPayment      Float
-  dueDay          Int?       // day of month payment is due
+  originalBalance Decimal    @db.Decimal(12, 2)
+  currentBalance  Decimal    @db.Decimal(12, 2)
+  interestRate    Decimal    @db.Decimal(6, 4)
+  minPayment      Decimal    @db.Decimal(12, 2)
+  dueDay          Int?
   isActive        Boolean    @default(true)
   isPaidOff       Boolean    @default(false)
   accountId       String?
@@ -164,8 +164,8 @@ model DebtPayment {
   debtId       String
   month        Int
   year         Int
-  amount       Float
-  extraPayment Float    @default(0)
+  amount       Decimal  @db.Decimal(12, 2)
+  extraPayment Decimal  @default(0) @db.Decimal(12, 2)
   paidAt       DateTime @default(now())
   paidById     String?
   notes        String?
@@ -190,8 +190,8 @@ enum DebtType {
 model SavingsGoal {
   id            String    @id @default(cuid())
   name          String
-  targetAmount  Float
-  currentAmount Float     @default(0)
+  targetAmount  Decimal   @db.Decimal(12, 2)
+  currentAmount Decimal   @default(0) @db.Decimal(12, 2)
   targetDate    DateTime?
   accountId     String?
   isComplete    Boolean   @default(false)
@@ -206,13 +206,13 @@ model SavingsGoal {
 
 model Transaction {
   id          String              @id @default(cuid())
-  amount      Float
+  amount      Decimal             @db.Decimal(12, 2)
   description String
   date        DateTime
   category    TransactionCategory
   accountId   String?
   isManual    Boolean             @default(true)
-  plaidId     String?             @unique // reserved for future Plaid integration
+  plaidId     String?             @unique
   isBusiness  Boolean             @default(false)
   notes       String?
   createdAt   DateTime            @default(now())
