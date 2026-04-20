@@ -6,6 +6,41 @@ class ApiError extends Error {
   }
 }
 
+function parseMoney(value: string | number | null | undefined): number {
+  if (value === null || value === undefined) return 0
+  if (typeof value === 'number') return value
+  const n = parseFloat(value)
+  return Number.isFinite(n) ? n : 0
+}
+
+// Field names that represent money values in API responses. Known-set so
+// we only touch actual money fields (not e.g. `month` or `dueDay`).
+const MONEY_FIELDS = new Set([
+  'amount', 'balance', 'targetAmount', 'currentAmount',
+  'originalBalance', 'currentBalance', 'minPayment', 'interestRate',
+  'extraPayment',
+  // Dashboard rollup fields:
+  'total', 'paid', 'unpaid', 'originalTotal', 'totalMinPayments',
+  'monthly', 'firstPaycheck', 'fifteenthPaycheck',
+  'totalTarget', 'totalCurrent',
+])
+
+function parseMoneyFields<T>(obj: T): T {
+  if (obj === null || typeof obj !== 'object') return obj
+  if (Array.isArray(obj)) return obj.map(parseMoneyFields) as any
+  const out: any = {}
+  for (const [k, v] of Object.entries(obj as any)) {
+    if (MONEY_FIELDS.has(k) && (typeof v === 'string' || typeof v === 'number')) {
+      out[k] = parseMoney(v as any)
+    } else if (v && typeof v === 'object') {
+      out[k] = parseMoneyFields(v)
+    } else {
+      out[k] = v
+    }
+  }
+  return out
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     ...options,
@@ -23,7 +58,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
         credentials: 'include',
       })
       if (!retry.ok) throw new ApiError(retry.status, await retry.text())
-      return retry.json()
+      return parseMoneyFields(await retry.json()) as T
     }
     window.location.href = '/login'
     throw new ApiError(401, 'Unauthorized')
@@ -35,7 +70,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   }
 
   if (res.status === 204) return undefined as T
-  return res.json()
+  return parseMoneyFields(await res.json()) as T
 }
 
 export const api = {
