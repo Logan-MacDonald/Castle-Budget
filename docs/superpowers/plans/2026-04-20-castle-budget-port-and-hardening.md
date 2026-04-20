@@ -467,7 +467,7 @@ services:
     ports:
       # Binds to loopback only — not reachable from LAN. Needed for
       # host-side tooling (prisma migrate, vitest) on the dev VM.
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
       - ./postgres-init:/docker-entrypoint-initdb.d:ro
@@ -716,7 +716,7 @@ POSTGRES_PASSWORD=replace-with-openssl-rand-hex-24
 
 # DATABASE_URL is derived in docker-compose.yml from the values above.
 # For host-side tools (Prisma Studio, migrations from Mac/dev VM shell), uncomment:
-# DATABASE_URL=postgresql://castle:PASSWORD@localhost:5432/castle_budget
+# DATABASE_URL=postgresql://castle:PASSWORD@localhost:5433/castle_budget
 
 # ── Seed passwords (used only on first db:seed run) ──────────────────────────
 # Change these immediately after first login
@@ -801,7 +801,7 @@ npm install -w packages/api   # if not done yet
 cd packages/api
 
 # Build DATABASE_URL from the root .env values:
-DATABASE_URL="postgresql://$(grep ^POSTGRES_USER ../../.env | cut -d= -f2):$(grep ^POSTGRES_PASSWORD ../../.env | cut -d= -f2)@localhost:5432/$(grep ^POSTGRES_DB ../../.env | cut -d= -f2)" \
+DATABASE_URL="postgresql://$(grep ^POSTGRES_USER ../../.env | cut -d= -f2):$(grep ^POSTGRES_PASSWORD ../../.env | cut -d= -f2)@localhost:5433/$(grep ^POSTGRES_DB ../../.env | cut -d= -f2)" \
   npx prisma migrate dev --name init
 
 cd ../..
@@ -2764,7 +2764,7 @@ beforeEach(async () => {
 import { defineConfig } from 'vitest/config'
 
 const testDb = process.env.TEST_DATABASE_URL
-  ?? 'postgresql://castle:CHANGE-ME@localhost:5432/castle_budget_test'
+  ?? 'postgresql://castle:CHANGE-ME@localhost:5433/castle_budget_test'
 
 export default defineConfig({
   test: {
@@ -2784,15 +2784,15 @@ export default defineConfig({
 })
 ```
 
-The default `postgresql://castle:CHANGE-ME@localhost:5432/castle_budget_test` is a placeholder — tests require the real password via env. Document in README that tests expect Postgres to be reachable on `localhost:5432` (i.e., the compose postgres port is exposed for test runs).
+The default `postgresql://castle:CHANGE-ME@localhost:5433/castle_budget_test` is a placeholder — tests require the real password via env. Document in README that tests expect Postgres to be reachable on `localhost:5433` (i.e., the compose postgres port is exposed for test runs).
 
 - [ ] **Step 4: Wire test DB URL into the test script**
 
 Modify `packages/api/package.json` `scripts` so `test` script reads from the root `.env`:
 
 ```json
-"test": "dotenv -e ../../.env -- sh -c 'TEST_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/castle_budget_test vitest run'",
-"test:watch": "dotenv -e ../../.env -- sh -c 'TEST_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/castle_budget_test vitest'"
+"test": "dotenv -e ../../.env -- sh -c 'TEST_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5433/castle_budget_test vitest run'",
+"test:watch": "dotenv -e ../../.env -- sh -c 'TEST_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5433/castle_budget_test vitest'"
 ```
 
 Install `dotenv-cli`:
@@ -3089,7 +3089,7 @@ npx prisma studio
 ```bash
 # Edit packages/api/prisma/schema.prisma
 cd packages/api
-DATABASE_URL="postgresql://$USER:$PASS@localhost:5432/castle_budget" \
+DATABASE_URL="postgresql://$USER:$PASS@localhost:5433/castle_budget" \
   npx prisma migrate dev --name descriptive-name
 
 # Commit the generated migration folder

@@ -9,7 +9,8 @@ services:
     ports:
       # Binds to loopback only — not reachable from LAN. Needed for
       # host-side tooling (prisma migrate, vitest) on the dev VM.
-      - "127.0.0.1:5432:5432"
+      # Host port 5433 because dev VM already has a system postgres on 5432.
+      - "127.0.0.1:5433:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
       - ./postgres-init:/docker-entrypoint-initdb.d:ro
