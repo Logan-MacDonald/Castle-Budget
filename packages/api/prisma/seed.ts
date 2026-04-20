@@ -37,73 +37,88 @@ async function main() {
 
   // ─── Income Sources ───────────────────────────────────────────────────────
 
-  const incomeSources = [
-    { name: 'Carla McGraw Hill', owner: 'Carla', amount: 0, payPeriod: PayPeriod.FIRST },
-    { name: 'Carla McGraw Hill', owner: 'Carla', amount: 0, payPeriod: PayPeriod.FIFTEENTH },
-    { name: 'Carla ILTX', owner: 'Carla', amount: 0, payPeriod: PayPeriod.VARIABLE },
-    { name: 'Logan Retirement', owner: 'Logan', amount: 0, payPeriod: PayPeriod.MONTHLY },
-    { name: 'VA Compensation', owner: 'Logan', amount: 0, payPeriod: PayPeriod.MONTHLY },
-    { name: 'Logan CWS', owner: 'Logan', amount: 0, payPeriod: PayPeriod.FIRST },
-    { name: 'Logan CWS', owner: 'Logan', amount: 0, payPeriod: PayPeriod.FIFTEENTH },
-    { name: 'ILTX Bonus', owner: 'Carla', amount: 0, payPeriod: PayPeriod.VARIABLE },
-  ]
+  const existingIncomeCount = await prisma.incomeSource.count()
+  if (existingIncomeCount === 0) {
+    const incomeSources = [
+      { name: 'Carla McGraw Hill', owner: 'Carla', amount: 0, payPeriod: PayPeriod.FIRST },
+      { name: 'Carla McGraw Hill', owner: 'Carla', amount: 0, payPeriod: PayPeriod.FIFTEENTH },
+      { name: 'Carla ILTX', owner: 'Carla', amount: 0, payPeriod: PayPeriod.VARIABLE },
+      { name: 'Logan Retirement', owner: 'Logan', amount: 0, payPeriod: PayPeriod.MONTHLY },
+      { name: 'VA Compensation', owner: 'Logan', amount: 0, payPeriod: PayPeriod.MONTHLY },
+      { name: 'Logan CWS', owner: 'Logan', amount: 0, payPeriod: PayPeriod.FIRST },
+      { name: 'Logan CWS', owner: 'Logan', amount: 0, payPeriod: PayPeriod.FIFTEENTH },
+      { name: 'ILTX Bonus', owner: 'Carla', amount: 0, payPeriod: PayPeriod.VARIABLE },
+    ]
 
-  for (const source of incomeSources) {
-    await prisma.incomeSource.create({ data: source })
+    for (const source of incomeSources) {
+      await prisma.incomeSource.create({ data: source })
+    }
+
+    console.log(`✅ Income sources seeded (${incomeSources.length}) — update amounts in Settings`)
+  } else {
+    console.log(`↪ Income sources already seeded (${existingIncomeCount}); skipping.`)
   }
-
-  console.log(`✅ Income sources seeded (${incomeSources.length}) — update amounts in Settings`)
 
   // ─── Debt Accounts ────────────────────────────────────────────────────────
   // Seeded from Budget_example.xlsx — balances/rates to be filled in via UI
 
-  const debts = [
-    { name: 'AmEx RCS', type: DebtType.CREDIT_CARD, institution: 'American Express', isBusiness: true },
-    { name: "Barclay's CCL", type: DebtType.CREDIT_CARD, institution: "Barclay's", dueDay: 10 },
-    { name: 'Bass Pro / Capital One', type: DebtType.CREDIT_CARD, institution: 'Capital One', dueDay: 1 },
-    { name: 'USAA', type: DebtType.CREDIT_CARD, institution: 'USAA' },
-    { name: 'Chase Southwest', type: DebtType.CREDIT_CARD, institution: 'Chase' },
-    { name: 'AmEx Personal', type: DebtType.CREDIT_CARD, institution: 'American Express' },
-    { name: 'Discover', type: DebtType.CREDIT_CARD, institution: 'Discover' },
-    { name: "Lowe's", type: DebtType.CREDIT_CARD, institution: "Lowe's" },
-    { name: 'BOA NCL Card', type: DebtType.CREDIT_CARD, institution: 'Bank of America' },
-    { name: 'Citi AA Card', type: DebtType.CREDIT_CARD, institution: 'Citi' },
-    { name: 'Citi Costco Card', type: DebtType.CREDIT_CARD, institution: 'Citi' },
-    { name: 'Citi Diamond', type: DebtType.CREDIT_CARD, institution: 'Citi' },
-    { name: 'Citi AA Plat', type: DebtType.CREDIT_CARD, institution: 'Citi' },
-    { name: 'Citi AA Exec', type: DebtType.CREDIT_CARD, institution: 'Citi' },
-    { name: "Barclay's AA Card", type: DebtType.CREDIT_CARD, institution: "Barclay's" },
-    { name: 'Wells Fargo', type: DebtType.CREDIT_CARD, institution: 'Wells Fargo' },
-    { name: 'BHG Loan', type: DebtType.PERSONAL_LOAN, institution: 'BHG' },
-    { name: 'AmEx Loan (Taxes 2024)', type: DebtType.PERSONAL_LOAN, institution: 'American Express' },
-  ]
+  const existingDebtCount = await prisma.debt.count()
+  if (existingDebtCount === 0) {
+    const debts = [
+      { name: 'AmEx RCS', type: DebtType.CREDIT_CARD, institution: 'American Express', isBusiness: true },
+      { name: "Barclay's CCL", type: DebtType.CREDIT_CARD, institution: "Barclay's", dueDay: 10 },
+      { name: 'Bass Pro / Capital One', type: DebtType.CREDIT_CARD, institution: 'Capital One', dueDay: 1 },
+      { name: 'USAA', type: DebtType.CREDIT_CARD, institution: 'USAA' },
+      { name: 'Chase Southwest', type: DebtType.CREDIT_CARD, institution: 'Chase' },
+      { name: 'AmEx Personal', type: DebtType.CREDIT_CARD, institution: 'American Express' },
+      { name: 'Discover', type: DebtType.CREDIT_CARD, institution: 'Discover' },
+      { name: "Lowe's", type: DebtType.CREDIT_CARD, institution: "Lowe's" },
+      { name: 'BOA NCL Card', type: DebtType.CREDIT_CARD, institution: 'Bank of America' },
+      { name: 'Citi AA Card', type: DebtType.CREDIT_CARD, institution: 'Citi' },
+      { name: 'Citi Costco Card', type: DebtType.CREDIT_CARD, institution: 'Citi' },
+      { name: 'Citi Diamond', type: DebtType.CREDIT_CARD, institution: 'Citi' },
+      { name: 'Citi AA Plat', type: DebtType.CREDIT_CARD, institution: 'Citi' },
+      { name: 'Citi AA Exec', type: DebtType.CREDIT_CARD, institution: 'Citi' },
+      { name: "Barclay's AA Card", type: DebtType.CREDIT_CARD, institution: "Barclay's" },
+      { name: 'Wells Fargo', type: DebtType.CREDIT_CARD, institution: 'Wells Fargo' },
+      { name: 'BHG Loan', type: DebtType.PERSONAL_LOAN, institution: 'BHG' },
+      { name: 'AmEx Loan (Taxes 2024)', type: DebtType.PERSONAL_LOAN, institution: 'American Express' },
+    ]
 
-  for (const debt of debts) {
-    await prisma.debt.create({
-      data: {
-        ...debt,
-        originalBalance: 0,
-        currentBalance: 0,
-        interestRate: 0,
-        minPayment: 0,
-        isBusiness: (debt as any).isBusiness ?? false,
-        isActive: true,
-      },
-    })
+    for (const debt of debts) {
+      await prisma.debt.create({
+        data: {
+          ...debt,
+          originalBalance: 0,
+          currentBalance: 0,
+          interestRate: 0,
+          minPayment: 0,
+          isBusiness: (debt as any).isBusiness ?? false,
+          isActive: true,
+        },
+      })
+    }
+
+    console.log(`✅ Debt accounts seeded (${debts.length}) — update balances/rates in Debt Payoff`)
+  } else {
+    console.log(`↪ Debts already seeded (${existingDebtCount}); skipping.`)
   }
-
-  console.log(`✅ Debt accounts seeded (${debts.length}) — update balances/rates in Debt Payoff`)
 
   // ─── Savings Goals ────────────────────────────────────────────────────────
 
-  await prisma.savingsGoal.createMany({
-    data: [
-      { name: 'E*Trade Main Brokerage', targetAmount: 0, currentAmount: 0 },
-      { name: "E*Trade (Will's Account)", targetAmount: 0, currentAmount: 0 },
-    ],
-  })
+  const existingSavingsCount = await prisma.savingsGoal.count()
+  if (existingSavingsCount === 0) {
+    await prisma.savingsGoal.createMany({
+      data: [
+        { name: 'E*Trade Main Brokerage', targetAmount: 0, currentAmount: 0 },
+        { name: "E*Trade (Will's Account)", targetAmount: 0, currentAmount: 0 },
+      ],
+    })
 
-  console.log('✅ Savings goals seeded')
+    console.log('✅ Savings goals seeded')
+  } else {
+    console.log(`↪ Savings goals already seeded (${existingSavingsCount}); skipping.`)
+  }
 
   console.log('\n🏰 Castle Budget seed complete.')
   console.log('   → Log in as logan@castle.home to set up accounts and fill in balances.')

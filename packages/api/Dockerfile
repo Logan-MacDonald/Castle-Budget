@@ -1,8 +1,18 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
-COPY package*.json ./
+
+# Copy workspace manifests first for better layer caching
+COPY package.json package-lock.json ./
+COPY packages/api/package.json ./packages/api/
+COPY packages/web/package.json ./packages/web/
+
+# Install all workspace deps (needed for prisma generate)
 RUN npm ci
-COPY . .
+
+# Copy api source
+COPY packages/api ./packages/api
+
+WORKDIR /app/packages/api
 RUN npx prisma generate
 RUN npm run build
 
@@ -10,13 +20,12 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 RUN apk add --no-cache openssl
 
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/package.json ./
-
-RUN mkdir -p /data
+# Copy built app and runtime files
+COPY --from=builder /app/packages/api/dist ./dist
+COPY --from=builder /app/packages/api/node_modules ./node_modules
+COPY --from=builder /app/packages/api/prisma ./prisma
+COPY --from=builder /app/packages/api/package.json ./
 
 EXPOSE 3001
 
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/index.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy && npx tsx prisma/seed.ts && node dist/index.js"]
