@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
+import { Decimal } from 'decimal.js'
 import { prisma } from '../lib/prisma'
 import { DebtType } from '@prisma/client'
 import { calculatePayoffStrategy } from '../lib/debt-strategy'
@@ -48,9 +49,9 @@ export async function debtRoutes(app: FastifyInstance) {
       debts.map(d => ({
         id: d.id,
         name: d.name,
-        currentBalance: d.currentBalance,
-        interestRate: d.interestRate,
-        minPayment: d.minPayment,
+        currentBalance: d.currentBalance.toString(),
+        interestRate: d.interestRate.toString(),
+        minPayment: d.minPayment.toString(),
       })),
       query.data.extra,
       query.data.method
@@ -96,10 +97,13 @@ export async function debtRoutes(app: FastifyInstance) {
     })
 
     // Update current balance
-    const newBalance = Math.max(0, debt.currentBalance - body.data.amount)
+    const newBalance = Decimal.max(
+      0,
+      new Decimal(debt.currentBalance.toString()).minus(body.data.amount)
+    )
     await prisma.debt.update({
       where: { id },
-      data: { currentBalance: newBalance, isPaidOff: newBalance === 0 },
+      data: { currentBalance: newBalance, isPaidOff: newBalance.eq(0) },
     })
 
     return payment

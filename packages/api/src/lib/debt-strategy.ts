@@ -1,9 +1,11 @@
+import { Decimal } from 'decimal.js'
+
 export type DebtInput = {
   id: string
   name: string
-  currentBalance: number
-  interestRate: number
-  minPayment: number
+  currentBalance: number | string
+  interestRate: number | string
+  minPayment: number | string
 }
 
 export type PayoffMonth = {
@@ -25,67 +27,106 @@ export type StrategyResult = {
   schedule: PayoffMonth[]
 }
 
+type InternalDebt = {
+  id: string
+  name: string
+  balance: Decimal
+  interestRate: Decimal
+  minPayment: Decimal
+}
+
+const ZERO = new Decimal(0)
+const TWELVE = new Decimal(12)
+
+function recordPayoff(
+  order: { id: string; name: string; payoffMonth: number }[],
+  debt: InternalDebt,
+  month: number,
+): void {
+  if (!order.some(o => o.id === debt.id)) {
+    order.push({ id: debt.id, name: debt.name, payoffMonth: month })
+  }
+}
+
 export function calculatePayoffStrategy(
   debts: DebtInput[],
-  extraMonthlyPayment: number,
+  extraMonthlyPayment: number | string,
   method: 'snowball' | 'avalanche'
 ): StrategyResult {
-  const sorted = [...debts].sort((a, b) =>
+  const working: InternalDebt[] = debts.map(d => ({
+    id: d.id,
+    name: d.name,
+    balance: new Decimal(d.currentBalance),
+    interestRate: new Decimal(d.interestRate),
+    minPayment: new Decimal(d.minPayment),
+  }))
+
+  working.sort((a, b) =>
     method === 'snowball'
-      ? a.currentBalance - b.currentBalance
-      : b.interestRate - a.interestRate
+      ? a.balance.cmp(b.balance)
+      : b.interestRate.cmp(a.interestRate)
   )
 
-  const balances = sorted.map(d => ({ ...d, balance: d.currentBalance }))
-  const totalMinPayment = balances.reduce((sum, d) => sum + d.minPayment, 0)
-  let totalBudget = totalMinPayment + extraMonthlyPayment
+  const extra = new Decimal(extraMonthlyPayment)
+  const totalMinPayment = working.reduce((sum, d) => sum.plus(d.minPayment), ZERO)
+  const totalBudget = totalMinPayment.plus(extra)
 
   const schedule: PayoffMonth[] = []
   const payoffOrder: { id: string; name: string; payoffMonth: number }[] = []
-  let month = 0
   const startDate = new Date()
-  let totalInterest = 0
+  let totalInterest = ZERO
+  let month = 0
   const MAX_MONTHS = 600
 
-  while (balances.some(d => d.balance > 0) && month < MAX_MONTHS) {
+  while (working.some(d => d.balance.gt(0)) && month < MAX_MONTHS) {
     month++
     const d = new Date(startDate)
     d.setMonth(d.getMonth() + month - 1)
 
     let remaining = totalBudget
 
-    for (const debt of balances) {
-      if (debt.balance <= 0) continue
-      const interest = debt.balance * (debt.interestRate / 12)
-      totalInterest += interest
-      const min = Math.min(debt.minPayment, debt.balance + interest)
-      const payment = Math.min(remaining, min)
-      remaining -= payment
-      const principal = payment - interest
-      debt.balance = Math.max(0, debt.balance + interest - payment)
+    // Minimums pass
+    for (const debt of working) {
+      if (debt.balance.lte(0)) continue
+      const monthlyRate = debt.interestRate.div(TWELVE)
+      const interest = debt.balance.times(monthlyRate)
+      totalInterest = totalInterest.plus(interest)
+
+      const max = debt.balance.plus(interest)
+      const min = Decimal.min(debt.minPayment, max)
+      const payment = Decimal.min(remaining, min)
+      remaining = remaining.minus(payment)
+      const principal = payment.minus(interest)
+      debt.balance = Decimal.max(ZERO, debt.balance.plus(interest).minus(payment))
 
       schedule.push({
         month,
         year: d.getFullYear(),
         debtId: debt.id,
-        payment,
-        interestCharge: interest,
-        principal: Math.max(0, principal),
-        remainingBalance: debt.balance,
+        payment: payment.toDecimalPlaces(2).toNumber(),
+        interestCharge: interest.toDecimalPlaces(2).toNumber(),
+        principal: Decimal.max(ZERO, principal).toDecimalPlaces(2).toNumber(),
+        remainingBalance: debt.balance.toDecimalPlaces(2).toNumber(),
       })
+
+      if (debt.balance.eq(0)) recordPayoff(payoffOrder, debt, month)
     }
 
-    for (const debt of balances) {
-      if (debt.balance <= 0 || remaining <= 0) continue
-      const extra = Math.min(remaining, debt.balance)
-      debt.balance = Math.max(0, debt.balance - extra)
-      const last = [...schedule].reverse().find(s => s.debtId === debt.id && s.month === month)
-      if (last) { last.payment += extra; last.principal += extra }
-      remaining -= extra
+    // Extra (or rolled-over minimums) pass — apply remaining budget in method order
+    for (const debt of working) {
+      if (debt.balance.lte(0) || remaining.lte(0)) continue
+      const apply = Decimal.min(remaining, debt.balance)
+      debt.balance = Decimal.max(ZERO, debt.balance.minus(apply))
 
-      if (debt.balance === 0) {
-        payoffOrder.push({ id: debt.id, name: debt.name, payoffMonth: month })
+      const last = [...schedule].reverse().find(s => s.debtId === debt.id && s.month === month)
+      if (last) {
+        last.payment = new Decimal(last.payment).plus(apply).toDecimalPlaces(2).toNumber()
+        last.principal = new Decimal(last.principal).plus(apply).toDecimalPlaces(2).toNumber()
+        last.remainingBalance = debt.balance.toDecimalPlaces(2).toNumber()
       }
+      remaining = remaining.minus(apply)
+
+      if (debt.balance.eq(0)) recordPayoff(payoffOrder, debt, month)
     }
   }
 
@@ -95,7 +136,7 @@ export function calculatePayoffStrategy(
   return {
     method,
     totalMonths: month,
-    totalInterestPaid: Math.round(totalInterest * 100) / 100,
+    totalInterestPaid: totalInterest.toDecimalPlaces(2).toNumber(),
     payoffDate: payoffDate.toISOString().split('T')[0],
     order: payoffOrder,
     schedule,
