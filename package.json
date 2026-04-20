@@ -8,7 +8,8 @@
     "build": "npm run build -w packages/api && npm run build -w packages/web",
     "db:migrate": "npm run db:migrate -w packages/api",
     "db:seed": "npm run db:seed -w packages/api",
-    "db:studio": "npm run db:studio -w packages/api"
+    "db:studio": "npm run db:studio -w packages/api",
+    "test": "npm run test -w packages/api -w packages/web"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
