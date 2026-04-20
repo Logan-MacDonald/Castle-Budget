@@ -1,28 +1,51 @@
-version: '3.9'
-
 services:
-  api:
-    build:
-      context: ./packages/api
-      dockerfile: Dockerfile
+  postgres:
+    image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      DATABASE_URL: file:/data/castle-budget.db
+      POSTGRES_DB: ${POSTGRES_DB:-castle_budget}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      # Binds to loopback only — not reachable from LAN. Needed for
+      # host-side tooling (prisma migrate, vitest) on the dev VM.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: packages/api/Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-castle_budget}
       JWT_SECRET: ${JWT_SECRET}
       COOKIE_SECRET: ${COOKIE_SECRET}
+      ADMIN_SEED_PASSWORD: ${ADMIN_SEED_PASSWORD}
+      MEMBER_SEED_PASSWORD: ${MEMBER_SEED_PASSWORD}
       NODE_ENV: production
       PORT: 3001
       HOST: 0.0.0.0
       WEB_ORIGIN: http://${APP_DOMAIN:-budget.home}
-    volumes:
-      - db_data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - internal
 
   web:
     build:
-      context: ./packages/web
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: packages/web/Dockerfile
     restart: unless-stopped
     networks:
       - internal
@@ -41,7 +64,7 @@ services:
       - internal
 
 volumes:
-  db_data:
+  pg_data:
 
 networks:
   internal:
