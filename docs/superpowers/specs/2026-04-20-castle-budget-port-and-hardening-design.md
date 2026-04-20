@@ -284,8 +284,9 @@ Each step ends with a smoke-test gate. If something is broken, stop and
 fix before moving on. The implementation plan (to be written next) will
 produce per-step tasks.
 
-1. Git init + initial commit of current scaffold. Create GitHub repo
-   (private) and push.
+1. Git init + initial commit of current scaffold (including this spec).
+   Already complete as of this spec's commit. Remaining: create a
+   private GitHub repo on the personal account and push `main`.
 2. Delete the dead `{routes,...}` brace-artifact directories. Own commit.
 3. Postgres migration and docker-compose overhaul. Smoke:
    `docker compose up` starts all services, Prisma migrations apply
