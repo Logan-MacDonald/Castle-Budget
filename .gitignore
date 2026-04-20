@@ -1,0 +1,23 @@
+node_modules/
+dist/
+.env
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Prisma
+packages/api/prisma/migrations/dev.db*
+
+# Build
+packages/web/dist/
+packages/api/dist/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp

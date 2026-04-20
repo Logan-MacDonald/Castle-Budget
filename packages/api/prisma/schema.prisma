@@ -1,0 +1,243 @@
+// castle-budget prisma schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Auth ────────────────────────────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(MEMBER)
+  refreshToken String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  billPayments BillPayment[]
+  debtPayments DebtPayment[]
+}
+
+enum Role {
+  ADMIN
+  MEMBER
+}
+
+// ─── Accounts ────────────────────────────────────────────────────────────────
+
+model Account {
+  id          String      @id @default(cuid())
+  name        String
+  institution String?
+  type        AccountType
+  balance     Float       @default(0)
+  isActive    Boolean     @default(true)
+  isBusiness  Boolean     @default(false)
+  notes       String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  bills        Bill[]
+  debts        Debt[]
+  transactions Transaction[]
+  savingsGoals SavingsGoal[]
+}
+
+enum AccountType {
+  CHECKING
+  SAVINGS
+  CREDIT_CARD
+  LOAN
+  INVESTMENT
+  OTHER
+}
+
+// ─── Income ──────────────────────────────────────────────────────────────────
+
+model IncomeSource {
+  id         String     @id @default(cuid())
+  name       String
+  owner      String     // "Logan" | "Carla" | "Shared"
+  amount     Float
+  payPeriod  PayPeriod
+  isActive   Boolean    @default(true)
+  isBusiness Boolean    @default(false)
+  notes      String?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+}
+
+enum PayPeriod {
+  FIRST         // 1st of month
+  FIFTEENTH     // 15th of month
+  BOTH          // both pay periods
+  MONTHLY       // once per month, non-standard date
+  ANNUAL        // annual/bonus
+  VARIABLE      // variable
+}
+
+// ─── Bills ───────────────────────────────────────────────────────────────────
+
+model Bill {
+  id          String       @id @default(cuid())
+  name        String
+  amount      Float
+  dueDay      Int          // 1-31, day of month
+  category    BillCategory
+  autoPay     Boolean      @default(false)
+  isActive    Boolean      @default(true)
+  isBusiness  Boolean      @default(false)
+  payPeriod   PayPeriod    // which paycheck covers this
+  accountId   String?
+  notes       String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  account     Account?     @relation(fields: [accountId], references: [id])
+  payments    BillPayment[]
+}
+
+model BillPayment {
+  id        String    @id @default(cuid())
+  billId    String
+  month     Int       // 1-12
+  year      Int
+  paidAt    DateTime?
+  isPaid    Boolean   @default(false)
+  paidById  String?
+  amount    Float?    // actual amount paid (may differ from bill.amount)
+  notes     String?
+  createdAt DateTime  @default(now())
+
+  bill      Bill      @relation(fields: [billId], references: [id])
+  paidBy    User?     @relation(fields: [paidById], references: [id])
+
+  @@unique([billId, month, year])
+}
+
+enum BillCategory {
+  HOUSING
+  UTILITIES
+  INSURANCE
+  DEBT_PAYMENT
+  SUBSCRIPTION
+  AUTO
+  HEALTHCARE
+  CHILDCARE
+  SAVINGS_TRANSFER
+  BUSINESS
+  OTHER
+}
+
+// ─── Debt ─────────────────────────────────────────────────────────────────────
+
+model Debt {
+  id              String     @id @default(cuid())
+  name            String
+  institution     String?
+  type            DebtType
+  originalBalance Float
+  currentBalance  Float
+  interestRate    Float      // APR as decimal (0.2399 = 23.99%)
+  minPayment      Float
+  dueDay          Int?       // day of month payment is due
+  isActive        Boolean    @default(true)
+  isPaidOff       Boolean    @default(false)
+  accountId       String?
+  notes           String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  account         Account?   @relation(fields: [accountId], references: [id])
+  payments        DebtPayment[]
+}
+
+model DebtPayment {
+  id           String   @id @default(cuid())
+  debtId       String
+  month        Int
+  year         Int
+  amount       Float
+  extraPayment Float    @default(0)
+  paidAt       DateTime @default(now())
+  paidById     String?
+  notes        String?
+  createdAt    DateTime @default(now())
+
+  debt         Debt     @relation(fields: [debtId], references: [id])
+  paidBy       User?    @relation(fields: [paidById], references: [id])
+}
+
+enum DebtType {
+  CREDIT_CARD
+  MORTGAGE
+  AUTO_LOAN
+  PERSONAL_LOAN
+  STUDENT_LOAN
+  MEDICAL
+  OTHER
+}
+
+// ─── Savings ─────────────────────────────────────────────────────────────────
+
+model SavingsGoal {
+  id            String    @id @default(cuid())
+  name          String
+  targetAmount  Float
+  currentAmount Float     @default(0)
+  targetDate    DateTime?
+  accountId     String?
+  isComplete    Boolean   @default(false)
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  account       Account?  @relation(fields: [accountId], references: [id])
+}
+
+// ─── Transactions ─────────────────────────────────────────────────────────────
+
+model Transaction {
+  id          String              @id @default(cuid())
+  amount      Float
+  description String
+  date        DateTime
+  category    TransactionCategory
+  accountId   String?
+  isManual    Boolean             @default(true)
+  plaidId     String?             @unique // reserved for future Plaid integration
+  isBusiness  Boolean             @default(false)
+  notes       String?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  account     Account?            @relation(fields: [accountId], references: [id])
+}
+
+enum TransactionCategory {
+  INCOME
+  HOUSING
+  UTILITIES
+  GROCERIES
+  DINING
+  TRANSPORTATION
+  HEALTHCARE
+  INSURANCE
+  ENTERTAINMENT
+  SUBSCRIPTIONS
+  CLOTHING
+  PERSONAL_CARE
+  EDUCATION
+  TRAVEL
+  SAVINGS
+  DEBT_PAYMENT
+  BUSINESS
+  OTHER
+}
