@@ -1,8 +1,15 @@
 import type { FastifyInstance } from 'fastify'
+import { Decimal } from 'decimal.js'
 import { prisma } from '../lib/prisma'
 
+const ZERO = new Decimal(0)
+const TWO = new Decimal(2)
+
+function sum<T>(items: T[], field: (t: T) => Decimal | number | string): Decimal {
+  return items.reduce((acc, item) => acc.plus(new Decimal(field(item) as any)), ZERO)
+}
+
 export async function dashboardRoutes(app: FastifyInstance) {
-  // GET /api/dashboard — main summary payload
   app.get('/', async () => {
     const now = new Date()
     const month = now.getMonth() + 1
@@ -14,13 +21,13 @@ export async function dashboardRoutes(app: FastifyInstance) {
       include: { payments: { where: { month, year } } },
     })
 
-    const totalBills = bills.reduce((sum, b) => sum + b.amount, 0)
+    const totalBills = sum(bills, b => b.amount)
     const paidBills = bills.filter(b => b.payments[0]?.isPaid)
     const unpaidBills = bills.filter(b => !b.payments[0]?.isPaid)
-    const totalPaid = paidBills.reduce((sum, b) => sum + b.amount, 0)
-    const totalUnpaid = unpaidBills.reduce((sum, b) => sum + b.amount, 0)
+    const totalPaid = sum(paidBills, b => b.amount)
+    const totalUnpaid = sum(unpaidBills, b => b.amount)
 
-    // Bills due in next 7 days
+    // Bills due in next 7 days — naive month-same-only filter retained here; proper fix in T17.
     const today = now.getDate()
     const upcomingBills = unpaidBills
       .filter(b => b.dueDay >= today && b.dueDay <= today + 7)
@@ -28,26 +35,36 @@ export async function dashboardRoutes(app: FastifyInstance) {
 
     // ── Debt summary ──
     const debts = await prisma.debt.findMany({ where: { isActive: true, isPaidOff: false } })
-    const totalDebt = debts.reduce((sum, d) => sum + d.currentBalance, 0)
-    const totalOriginalDebt = debts.reduce((sum, d) => sum + d.originalBalance, 0)
-    const totalMinPayments = debts.reduce((sum, d) => sum + d.minPayment, 0)
-    const debtPaidPercent = totalOriginalDebt > 0
-      ? Math.round(((totalOriginalDebt - totalDebt) / totalOriginalDebt) * 100)
+    const totalDebt = sum(debts, d => d.currentBalance)
+    const totalOriginalDebt = sum(debts, d => d.originalBalance)
+    const totalMinPayments = sum(debts, d => d.minPayment)
+    const debtPaidPercent = totalOriginalDebt.gt(0)
+      ? Math.round(
+          totalOriginalDebt.minus(totalDebt).div(totalOriginalDebt).times(100).toNumber()
+        )
       : 0
 
     // ── Income ──
     const incomeSources = await prisma.incomeSource.findMany({ where: { isActive: true } })
-    const monthlyIncome = incomeSources.reduce((sum, i) => {
-      if (i.payPeriod === 'FIRST' || i.payPeriod === 'FIFTEENTH') return sum + i.amount
-      if (i.payPeriod === 'BOTH') return sum + (i.amount * 2)
-      if (i.payPeriod === 'MONTHLY') return sum + i.amount
-      return sum
-    }, 0)
+    const monthlyIncome = incomeSources.reduce((acc, i) => {
+      const amt = new Decimal(i.amount as any)
+      if (i.payPeriod === 'FIRST' || i.payPeriod === 'FIFTEENTH' || i.payPeriod === 'MONTHLY') return acc.plus(amt)
+      if (i.payPeriod === 'BOTH') return acc.plus(amt.times(TWO))
+      return acc
+    }, ZERO)
+
+    const firstPaycheck = incomeSources
+      .filter(i => i.payPeriod === 'FIRST' || i.payPeriod === 'BOTH')
+      .reduce((acc, i) => acc.plus(new Decimal(i.amount as any)), ZERO)
+
+    const fifteenthPaycheck = incomeSources
+      .filter(i => i.payPeriod === 'FIFTEENTH' || i.payPeriod === 'BOTH')
+      .reduce((acc, i) => acc.plus(new Decimal(i.amount as any)), ZERO)
 
     // ── Savings ──
     const savingsGoals = await prisma.savingsGoal.findMany({ where: { isComplete: false } })
-    const totalSavingsTarget = savingsGoals.reduce((sum, g) => sum + g.targetAmount, 0)
-    const totalSavingsCurrent = savingsGoals.reduce((sum, g) => sum + g.currentAmount, 0)
+    const totalSavingsTarget = sum(savingsGoals, g => g.targetAmount)
+    const totalSavingsCurrent = sum(savingsGoals, g => g.currentAmount)
 
     // ── Accounts ──
     const accounts = await prisma.account.findMany({ where: { isActive: true } })
@@ -56,35 +73,41 @@ export async function dashboardRoutes(app: FastifyInstance) {
       month,
       year,
       bills: {
-        total: totalBills,
-        paid: totalPaid,
-        unpaid: totalUnpaid,
+        total: totalBills.toFixed(2),
+        paid: totalPaid.toFixed(2),
+        unpaid: totalUnpaid.toFixed(2),
         paidCount: paidBills.length,
         unpaidCount: unpaidBills.length,
         totalCount: bills.length,
-        upcoming: upcomingBills.map(b => ({ id: b.id, name: b.name, amount: b.amount, dueDay: b.dueDay, autoPay: b.autoPay })),
+        upcoming: upcomingBills.map(b => ({
+          id: b.id,
+          name: b.name,
+          amount: b.amount.toString(),
+          dueDay: b.dueDay,
+          autoPay: b.autoPay,
+        })),
       },
       debt: {
-        total: totalDebt,
-        originalTotal: totalOriginalDebt,
+        total: totalDebt.toFixed(2),
+        originalTotal: totalOriginalDebt.toFixed(2),
         paidPercent: debtPaidPercent,
-        totalMinPayments,
+        totalMinPayments: totalMinPayments.toFixed(2),
         activeCount: debts.length,
       },
       income: {
-        monthly: monthlyIncome,
-        firstPaycheck: incomeSources.filter(i => i.payPeriod === 'FIRST' || i.payPeriod === 'BOTH').reduce((s, i) => s + i.amount, 0),
-        fifteenthPaycheck: incomeSources.filter(i => i.payPeriod === 'FIFTEENTH' || i.payPeriod === 'BOTH').reduce((s, i) => s + i.amount, 0),
+        monthly: monthlyIncome.toFixed(2),
+        firstPaycheck: firstPaycheck.toFixed(2),
+        fifteenthPaycheck: fifteenthPaycheck.toFixed(2),
       },
       savings: {
-        totalTarget: totalSavingsTarget,
-        totalCurrent: totalSavingsCurrent,
+        totalTarget: totalSavingsTarget.toFixed(2),
+        totalCurrent: totalSavingsCurrent.toFixed(2),
         goalCount: savingsGoals.length,
       },
       cashFlow: {
-        monthly: monthlyIncome - totalBills - totalMinPayments,
+        monthly: monthlyIncome.minus(totalBills).minus(totalMinPayments).toFixed(2),
       },
-      accounts,
+      accounts: accounts.map(a => ({ ...a, balance: a.balance.toString() })),
     }
   })
 }
