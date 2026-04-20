@@ -6,7 +6,7 @@ import { PayPeriod } from '@prisma/client'
 const incomeSchema = z.object({
   name:       z.string().min(1),
   owner:      z.string().min(1),
-  amount:     z.number().nonnegative(),
+  amount:     z.coerce.number().nonnegative(),
   payPeriod:  z.nativeEnum(PayPeriod),
   isActive:   z.boolean().default(true),
   isBusiness: z.boolean().default(false),

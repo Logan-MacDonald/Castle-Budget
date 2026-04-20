@@ -4,7 +4,7 @@ import { prisma } from '../lib/prisma'
 import { TransactionCategory } from '@prisma/client'
 
 const txSchema = z.object({
-  amount:      z.number(),
+  amount:      z.coerce.number(),
   description: z.string().min(1),
   date:        z.string().datetime(),
   category:    z.nativeEnum(TransactionCategory),

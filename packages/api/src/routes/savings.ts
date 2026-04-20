@@ -1,11 +1,12 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
+import { Decimal } from 'decimal.js'
 
 const savingsSchema = z.object({
   name:          z.string().min(1),
-  targetAmount:  z.number().nonnegative(),
-  currentAmount: z.number().nonnegative().default(0),
+  targetAmount:  z.coerce.number().nonnegative(),
+  currentAmount: z.coerce.number().nonnegative().default(0),
   targetDate:    z.string().datetime().optional(),
   accountId:     z.string().optional(),
   notes:         z.string().optional(),
@@ -30,16 +31,22 @@ export async function savingsRoutes(app: FastifyInstance) {
   // POST /api/savings/:id/contribute
   app.post('/:id/contribute', async (request, reply) => {
     const { id } = request.params as { id: string }
-    const body = z.object({ amount: z.number().positive() }).safeParse(request.body)
+    const body = z.object({ amount: z.coerce.number().positive() }).safeParse(request.body)
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() })
 
     const goal = await prisma.savingsGoal.findUnique({ where: { id } })
     if (!goal) return reply.code(404).send({ error: 'Goal not found' })
 
-    const newAmount = goal.currentAmount + body.data.amount
+    const current = new Decimal(goal.currentAmount.toString())
+    const target  = new Decimal(goal.targetAmount.toString())
+    const newAmount = current.plus(body.data.amount)
+
     return prisma.savingsGoal.update({
       where: { id },
-      data: { currentAmount: newAmount, isComplete: newAmount >= goal.targetAmount },
+      data: {
+        currentAmount: newAmount,
+        isComplete: newAmount.gte(target),
+      },
     })
   })
 

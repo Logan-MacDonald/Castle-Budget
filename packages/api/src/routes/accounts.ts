@@ -7,7 +7,7 @@ const accountSchema = z.object({
   name:        z.string().min(1),
   institution: z.string().optional(),
   type:        z.nativeEnum(AccountType),
-  balance:     z.number().default(0),
+  balance:     z.coerce.number().default(0),
   isActive:    z.boolean().default(true),
   isBusiness:  z.boolean().default(false),
   notes:       z.string().optional(),

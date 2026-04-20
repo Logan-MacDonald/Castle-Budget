@@ -5,7 +5,7 @@ import { BillCategory, PayPeriod } from '@prisma/client'
 
 const billSchema = z.object({
   name:       z.string().min(1),
-  amount:     z.number().positive(),
+  amount:     z.coerce.number().positive(),
   dueDay:     z.number().int().min(1).max(31),
   category:   z.nativeEnum(BillCategory),
   autoPay:    z.boolean().default(false),
@@ -83,7 +83,7 @@ export async function billRoutes(app: FastifyInstance) {
     const body = z.object({
       month:   z.number().int().min(1).max(12),
       year:    z.number().int(),
-      amount:  z.number().optional(),
+      amount:  z.coerce.number().optional(),
       notes:   z.string().optional(),
     }).safeParse(request.body)
 
