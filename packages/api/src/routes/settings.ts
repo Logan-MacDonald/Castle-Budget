@@ -2,20 +2,16 @@ import type { FastifyInstance } from 'fastify'
 import bcrypt from 'bcrypt'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
+import { requireAdmin } from '../lib/auth-hooks'
 
 export async function settingsRoutes(app: FastifyInstance) {
-  // GET /api/settings/users — admin only
-  app.get('/users', async (request, reply) => {
-    const user = request.user as any
-    if (user.role !== 'ADMIN') return reply.code(403).send({ error: 'Admin only' })
-    return prisma.user.findMany({ select: { id: true, name: true, email: true, role: true, createdAt: true } })
+  app.get('/users', { onRequest: [requireAdmin] }, async () => {
+    return prisma.user.findMany({
+      select: { id: true, name: true, email: true, role: true, createdAt: true },
+    })
   })
 
-  // POST /api/settings/users — admin only: create user
-  app.post('/users', async (request, reply) => {
-    const user = request.user as any
-    if (user.role !== 'ADMIN') return reply.code(403).send({ error: 'Admin only' })
-
+  app.post('/users', { onRequest: [requireAdmin] }, async (request, reply) => {
     const body = z.object({
       name:     z.string().min(1),
       email:    z.string().email(),
@@ -32,7 +28,6 @@ export async function settingsRoutes(app: FastifyInstance) {
     })
   })
 
-  // PATCH /api/settings/password — change own password
   app.patch('/password', async (request, reply) => {
     const user = request.user as any
     const body = z.object({
@@ -49,16 +44,15 @@ export async function settingsRoutes(app: FastifyInstance) {
     if (!valid) return reply.code(401).send({ error: 'Current password incorrect' })
 
     const hash = await bcrypt.hash(body.data.newPassword, 12)
-    await prisma.user.update({ where: { id: user.sub }, data: { passwordHash: hash, refreshToken: null } })
+    await prisma.user.update({
+      where: { id: user.sub },
+      data: { passwordHash: hash, refreshToken: null },
+    })
 
     return { ok: true }
   })
 
-  // PATCH /api/settings/users/:id — admin: update user
-  app.patch('/users/:id', async (request, reply) => {
-    const user = request.user as any
-    if (user.role !== 'ADMIN') return reply.code(403).send({ error: 'Admin only' })
-
+  app.patch('/users/:id', { onRequest: [requireAdmin] }, async (request, reply) => {
     const body = z.object({
       name:     z.string().min(1).optional(),
       email:    z.string().email().optional(),

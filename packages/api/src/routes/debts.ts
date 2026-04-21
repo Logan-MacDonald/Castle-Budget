@@ -4,6 +4,7 @@ import { Decimal } from 'decimal.js'
 import { prisma } from '../lib/prisma'
 import { DebtType } from '@prisma/client'
 import { calculatePayoffStrategy } from '../lib/debt-strategy'
+import { requireAdmin } from '../lib/auth-hooks'
 
 const debtSchema = z.object({
   name:            z.string().min(1),
@@ -61,14 +62,14 @@ export async function debtRoutes(app: FastifyInstance) {
   })
 
   // POST /api/debts
-  app.post('/', async (request, reply) => {
+  app.post('/', { onRequest: [requireAdmin] }, async (request, reply) => {
     const body = debtSchema.safeParse(request.body)
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() })
     return prisma.debt.create({ data: body.data })
   })
 
   // PATCH /api/debts/:id
-  app.patch('/:id', async (request, reply) => {
+  app.patch('/:id', { onRequest: [requireAdmin] }, async (request, reply) => {
     const body = debtSchema.partial().safeParse(request.body)
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() })
     const { id } = request.params as { id: string }
@@ -110,7 +111,7 @@ export async function debtRoutes(app: FastifyInstance) {
   })
 
   // DELETE /api/debts/:id — soft delete
-  app.delete('/:id', async (request) => {
+  app.delete('/:id', { onRequest: [requireAdmin] }, async (request) => {
     const { id } = request.params as { id: string }
     return prisma.debt.update({ where: { id }, data: { isActive: false } })
   })

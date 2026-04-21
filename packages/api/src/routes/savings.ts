@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
 import { Decimal } from 'decimal.js'
+import { requireAdmin } from '../lib/auth-hooks'
 
 const savingsSchema = z.object({
   name:          z.string().min(1),
@@ -15,13 +16,13 @@ const savingsSchema = z.object({
 export async function savingsRoutes(app: FastifyInstance) {
   app.get('/', async () => prisma.savingsGoal.findMany({ include: { account: true }, orderBy: { createdAt: 'asc' } }))
 
-  app.post('/', async (request, reply) => {
+  app.post('/', { onRequest: [requireAdmin] }, async (request, reply) => {
     const body = savingsSchema.safeParse(request.body)
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() })
     return prisma.savingsGoal.create({ data: body.data })
   })
 
-  app.patch('/:id', async (request, reply) => {
+  app.patch('/:id', { onRequest: [requireAdmin] }, async (request, reply) => {
     const body = savingsSchema.partial().safeParse(request.body)
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() })
     const { id } = request.params as { id: string }
@@ -50,7 +51,7 @@ export async function savingsRoutes(app: FastifyInstance) {
     })
   })
 
-  app.delete('/:id', async (request) => {
+  app.delete('/:id', { onRequest: [requireAdmin] }, async (request) => {
     const { id } = request.params as { id: string }
     return prisma.savingsGoal.delete({ where: { id } })
   })

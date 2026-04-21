@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
 import { BillCategory, PayPeriod } from '@prisma/client'
+import { requireAdmin } from '../lib/auth-hooks'
 
 const billSchema = z.object({
   name:       z.string().min(1),
@@ -57,14 +58,14 @@ export async function billRoutes(app: FastifyInstance) {
   })
 
   // POST /api/bills
-  app.post('/', async (request, reply) => {
+  app.post('/', { onRequest: [requireAdmin] }, async (request, reply) => {
     const body = billSchema.safeParse(request.body)
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() })
     return prisma.bill.create({ data: body.data })
   })
 
   // PATCH /api/bills/:id
-  app.patch('/:id', async (request, reply) => {
+  app.patch('/:id', { onRequest: [requireAdmin] }, async (request, reply) => {
     const body = billSchema.partial().safeParse(request.body)
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() })
     const { id } = request.params as { id: string }
@@ -72,7 +73,7 @@ export async function billRoutes(app: FastifyInstance) {
   })
 
   // DELETE /api/bills/:id — soft delete
-  app.delete('/:id', async (request) => {
+  app.delete('/:id', { onRequest: [requireAdmin] }, async (request) => {
     const { id } = request.params as { id: string }
     return prisma.bill.update({ where: { id }, data: { isActive: false } })
   })

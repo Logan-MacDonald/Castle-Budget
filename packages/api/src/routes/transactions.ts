@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
 import { TransactionCategory } from '@prisma/client'
+import { requireAdmin } from '../lib/auth-hooks'
 
 const txSchema = z.object({
   amount:      z.coerce.number(),
@@ -38,20 +39,20 @@ export async function transactionRoutes(app: FastifyInstance) {
     })
   })
 
-  app.post('/', async (request, reply) => {
+  app.post('/', { onRequest: [requireAdmin] }, async (request, reply) => {
     const body = txSchema.safeParse(request.body)
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() })
     return prisma.transaction.create({ data: { ...body.data, isManual: true } })
   })
 
-  app.patch('/:id', async (request, reply) => {
+  app.patch('/:id', { onRequest: [requireAdmin] }, async (request, reply) => {
     const body = txSchema.partial().safeParse(request.body)
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() })
     const { id } = request.params as { id: string }
     return prisma.transaction.update({ where: { id }, data: body.data })
   })
 
-  app.delete('/:id', async (request) => {
+  app.delete('/:id', { onRequest: [requireAdmin] }, async (request) => {
     const { id } = request.params as { id: string }
     return prisma.transaction.delete({ where: { id } })
   })
