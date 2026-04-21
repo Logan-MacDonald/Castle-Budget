@@ -1,352 +1,197 @@
 # Castle Budget — Deployment & Operations Guide
-**lm-server (192.168.1.201) · Ubuntu Server · Docker**
+
+**Dev VM (MS-01 Proxmox, Ubuntu) → GitHub (personal) → Ops VM (MS-01, TBD)**
 
 ---
 
-## Prerequisites
+## Development loop
 
-These should already be present on lm-server from the AuditFlow setup.
-Verify with:
+All development happens on the dev VM in `/home/logan/projects/castle-budget/`.
 
+### Prerequisites
+
+- Docker 24+, Docker Compose v2
+- Node 20+, npm 10+
+- git
+- Postgres is exposed on `127.0.0.1:5433` by the compose stack (5432 is taken by the dev VM's system postgres)
+
+Verify:
 ```bash
-docker --version          # Docker 24+
-docker compose version    # v2 (not v1 docker-compose)
-node --version            # Node 20+
-npm --version             # npm 10+
+docker --version
+docker compose version
+node --version
 git --version
 ```
 
-If Node is missing:
-```bash
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt-get install -y nodejs
-```
-
----
-
-## Step 1 — Transfer the project to lm-server
-
-From your Mac, unzip the downloaded archive and push it to lm-server:
+### First-time setup on the dev VM
 
 ```bash
-# On your Mac (adjust path to wherever you unzipped it)
-scp -r ~/Downloads/castle-budget lm@192.168.1.201:/home/lm/
-```
-
-Or if you're using Tailscale and have a hostname:
-```bash
-scp -r ~/Downloads/castle-budget lm@lm-server:/home/lm/
-```
-
-Then SSH in:
-```bash
-ssh lm@192.168.1.201
-cd /home/lm/castle-budget
-```
-
----
-
-## Step 2 — Create the .env file
-
-```bash
+cd ~/projects/castle-budget
 cp .env.example .env
-nano .env
-```
+# Edit .env:
+#   JWT_SECRET        openssl rand -hex 32
+#   COOKIE_SECRET     openssl rand -hex 32
+#   POSTGRES_PASSWORD openssl rand -hex 24
+#   ADMIN_SEED_PASSWORD   (something memorable)
+#   MEMBER_SEED_PASSWORD  (something memorable)
 
-Generate real secrets (run each command and paste the output):
-
-```bash
-# Generate JWT_SECRET
-openssl rand -hex 32
-
-# Generate COOKIE_SECRET  
-openssl rand -hex 32
-```
-
-Fill in your .env:
-```
-JWT_SECRET=<paste first output>
-COOKIE_SECRET=<paste second output>
-APP_DOMAIN=budget.home
-ADMIN_SEED_PASSWORD=<strong password for Logan>
-MEMBER_SEED_PASSWORD=<strong password for Carla>
-```
-
-Save and close (`Ctrl+X`, `Y`, `Enter`).
-
----
-
-## Step 3 — Install dependencies and generate the database schema
-
-```bash
-# Install all workspace deps
 npm install
-
-# Generate Prisma client
-npm run db:generate -w packages/api
-
-# Create the initial migration
-cd packages/api
-npx prisma migrate dev --name init
-cd ../..
-```
-
----
-
-## Step 4 — Seed the database with initial data
-
-This creates Logan (admin) and Carla (member) accounts, pre-loads all 18
-debt accounts from your spreadsheet, income sources, and savings goals.
-
-```bash
-npm run db:seed
-```
-
-You should see:
-```
-🌱 Seeding castle-budget database...
-✅ Users: Logan (admin), Carla (member)
-✅ Income sources seeded (8) — update amounts in Settings
-✅ Debt accounts seeded (18) — update balances/rates in Debt Payoff
-✅ Savings goals seeded
-🏰 Castle Budget seed complete.
-```
-
----
-
-## Step 5 — Build and start all containers
-
-```bash
 docker compose up -d --build
 ```
 
-This will:
-1. Build the API image (TypeScript compile + Prisma)
-2. Build the web image (Vite production build)
-3. Start Nginx on port 80
-4. Apply any pending Prisma migrations automatically on startup
+The api container runs `prisma migrate deploy` + seed on every start. First start creates the schema and seeds users + debts + income sources + savings goals. Seed is idempotent — safe to re-run.
 
-Check that all three containers are running:
+Load the app at `http://localhost` on the dev VM. Log in as `logan@castle.home` with the `ADMIN_SEED_PASSWORD` from `.env`.
+
+### Day-to-day
+
 ```bash
-docker compose ps
-```
-
-Expected output:
-```
-NAME                    STATUS          PORTS
-castle-budget-api-1     Up              3001/tcp
-castle-budget-web-1     Up              80/tcp
-castle-budget-nginx-1   Up              0.0.0.0:80->80/tcp
-```
-
-Test the health endpoint:
-```bash
-curl http://localhost/health
-# {"status":"ok","ts":"2025-..."}
-```
-
----
-
-## Step 6 — Local DNS (LAN access at budget.home)
-
-### Option A — Router DNS (Recommended)
-Log into your router admin panel and add a local DNS entry:
-```
-budget.home  →  192.168.1.201
-```
-
-The exact setting varies by router:
-- **Unifi/Ubiquiti**: Settings → Networks → DNS → Local DNS Records
-- **TP-Link/Archer**: Advanced → Network → DNS → Local Domain Name
-- **Asus**: LAN → DNS Filter → add static entry
-- **Most others**: look for "Local DNS", "Custom DNS Records", or "Hosts"
-
-### Option B — dnsmasq on lm-server (if router doesn't support it)
-```bash
-sudo apt install dnsmasq
-echo "address=/budget.home/192.168.1.201" | sudo tee /etc/dnsmasq.d/castle-budget.conf
-sudo systemctl restart dnsmasq
-```
-
-Then set your router's DHCP DNS server to 192.168.1.201.
-
-Once DNS is set, any device on your home WiFi can reach:
-```
-http://budget.home
-```
-
----
-
-## Step 7 — First login
-
-1. Open `http://budget.home` in your browser
-2. Log in as `logan@castle.home` with the ADMIN_SEED_PASSWORD you set
-3. Navigate to **Settings** → change your password immediately
-4. Go to **Income** → update all income amounts (they're seeded as $0)
-5. Go to **Debt Payoff** → update all 18 debt balances, rates, and min payments
-6. Go to **Bills** → add your recurring bills (they weren't in the spreadsheet data)
-7. Log out and log back in as `carla@castle.home` to verify her access works
-
----
-
-## Step 8 — Set up Carla's access (Remote / Tailscale)
-
-**At home (LAN):** She can use `http://budget.home` on any device connected to your WiFi once DNS is set up.
-
-**Remote access:**
-1. Install Tailscale on Carla's phone (iOS or Android — free account)
-2. On your Mac/server, run: `tailscale share` or invite her via the Tailscale admin console
-3. Once connected, she accesses: `http://192.168.1.201` via Tailscale
-4. Or set up a Tailscale MagicDNS alias so it stays `budget.home` even remotely
-
----
-
-## Day-to-Day Operations
-
-### View logs
-```bash
-# All services
-docker compose logs -f
-
-# API only
+# Logs
 docker compose logs -f api
-
-# Last 50 lines
 docker compose logs --tail=50 api
-```
 
-### Restart services
-```bash
+# Restart after code changes
+docker compose up -d --build api
+
+# Restart one service
 docker compose restart api
-docker compose restart         # all services
-```
 
-### Stop everything
-```bash
+# Stop everything
 docker compose down
+
+# Start fresh (destroys DB volume!)
+docker compose down -v
+docker compose up -d --build
 ```
 
-### Update after code changes
-```bash
-git pull                        # if using git
-docker compose up -d --build   # rebuild and restart
-```
-
-### Backup the database
-The SQLite database lives in the `castle-budget_db_data` Docker volume.
+### Running tests
 
 ```bash
-# Backup to home directory
-docker run --rm \
-  -v castle-budget_db_data:/data \
-  -v /home/lm/backups:/backup \
-  alpine tar czf /backup/castle-budget-$(date +%Y%m%d).db.tar.gz /data
-
-# List backups
-ls -lh ~/backups/
+npm test
+# or watch mode:
+cd packages/api && npm run test:watch
 ```
 
-Set up automatic weekly backup with cron:
+Tests require the postgres container to be running (they connect to `127.0.0.1:5433`). The test DB is `castle_budget_test` (created automatically on first volume init via `postgres-init/10-create-test-db.sh`).
+
+Vitest runs test files sequentially (not in parallel) because tests share the same test DB. See `packages/api/vitest.config.ts`.
+
+### Prisma Studio
+
 ```bash
-crontab -e
-# Add this line (runs every Sunday at 2am):
-0 2 * * 0 docker run --rm -v castle-budget_db_data:/data -v /home/lm/backups:/backup alpine tar czf /backup/castle-budget-$(date +\%Y\%m\%d).db.tar.gz /data
+# From dev VM:
+cd packages/api
+DATABASE_URL="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5433/castle_budget" \
+  npx prisma studio
+# Opens http://localhost:5555 — pointed at the dev DB
 ```
 
-### Prisma Studio (admin DB viewer)
+### Making schema changes
+
 ```bash
-# From your Mac via SSH tunnel
-ssh -L 5555:localhost:5555 lm@192.168.1.201 \
-  "cd /home/lm/castle-budget && npm run db:studio"
+# Edit packages/api/prisma/schema.prisma
+cd packages/api
+DATABASE_URL="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5433/castle_budget" \
+  npx prisma migrate dev --name descriptive-name
 
-# Then open: http://localhost:5555
+# Commit the generated migration folder
+git add prisma/migrations/
 ```
+
+### Pushing to GitHub
+
+Repo: https://github.com/Logan-MacDonald/Castle-Budget (private).
+Remote is configured via SSH:
+```bash
+git push origin main
+```
+
+The `github-personal` host alias in `~/.ssh/config` routes through the personal SSH key.
 
 ---
 
-## Future: PostgreSQL Migration
+## Ops VM provisioning (post-dev)
 
-When the Minisforum MS-01 Proxmox lab is ready, migrating from SQLite to
-PostgreSQL is a one-step schema change:
+**Not yet done.** Placeholder for the work after dev is complete:
 
-1. In `packages/api/prisma/schema.prisma`, change:
-   ```prisma
-   datasource db {
-     provider = "postgresql"    # was "sqlite"
-     url      = env("DATABASE_URL")
-   }
-   ```
+1. Provision Ubuntu Server VM on MS-01 Proxmox.
+2. Install Docker 24+, Docker Compose v2.
+3. Clone the repo: `git clone git@github-personal:Logan-MacDonald/Castle-Budget.git` (or over HTTPS with a PAT).
+4. Place `.env` with production secrets (not in the repo).
+5. Set up local DNS or Tailscale routing for `budget.home`.
+6. `docker compose up -d --build`.
+7. Verify `curl http://localhost/health`.
+8. First login + password change flow via the UI.
+9. Set up pg_dump cron for weekly backups (see Backups below).
 
-2. Export SQLite data, import to Postgres.
-
-3. Update `.env`:
-   ```
-   DATABASE_URL=postgresql://user:pass@postgres-host:5432/castle_budget
-   ```
-
-4. Run `npx prisma migrate dev` to regenerate migrations for Postgres.
+Treat ops VM as disposable — everything lives in the repo + `.env` + the `pg_data` volume.
 
 ---
 
-## Future: Plaid Banking Integration
+## Backups (pg_dump)
 
-The `Transaction` model already has a `plaidId` field reserved. When ready:
+Manual backup:
+```bash
+DB_USER=$(grep ^POSTGRES_USER .env | cut -d= -f2)
+docker compose exec postgres pg_dump -U "$DB_USER" castle_budget \
+  > ~/backups/castle-budget-$(date +%Y%m%d).sql
+```
 
-1. Sign up at https://dashboard.plaid.com (free dev tier)
-2. Add `PLAID_CLIENT_ID` and `PLAID_SECRET` to `.env`
-3. Install: `npm install plaid -w packages/api`
-4. Add `/api/plaid/link` and `/api/plaid/sync` routes
-5. Transactions auto-import to the existing `Transaction` table
+Restore:
+```bash
+DB_USER=$(grep ^POSTGRES_USER .env | cut -d= -f2)
+cat ~/backups/castle-budget-YYYYMMDD.sql | \
+  docker compose exec -T postgres psql -U "$DB_USER" castle_budget
+```
 
----
-
-## Security Notes
-
-- The app is only accessible on your LAN and via Tailscale — no public exposure
-- JWT tokens are short-lived (15 min) with httpOnly cookies — not accessible to JavaScript
-- Refresh tokens are bcrypt-hashed in the database
-- All passwords are bcrypt with 12 rounds
-- SQLite database is stored in a named Docker volume, not a bind mount
-- Add HTTPS via Tailscale HTTPS certificates when ready (zero config)
+Automating with cron on the ops VM is a roadmap item, not in this project's scope.
 
 ---
 
 ## Troubleshooting
 
-**Can't reach http://budget.home:**
+**Can't reach http://localhost:**
 ```bash
-# Verify nginx is up and on port 80
 docker compose ps
-curl http://192.168.1.201/health   # use IP instead of hostname
-# If that works, the issue is DNS — re-check router settings
+# All four services should show "Up". If nginx is down, check its logs:
+docker compose logs nginx
 ```
 
-**API returning 500 errors:**
+**API 500 errors:**
 ```bash
 docker compose logs api
-# Look for Prisma connection errors or migration issues
+# Look for Prisma connection errors or migration failures
 ```
 
-**Database is empty after restart:**
+**Database empty after wipe:**
 ```bash
-# Volumes should persist — verify volume exists
-docker volume ls | grep castle-budget
-# Re-run seed if needed (safe to run multiple times — uses upsert)
-npm run db:seed
+# Seed is idempotent via count checks — safe to re-run:
+docker compose exec api npx tsx prisma/seed.ts
 ```
 
 **Forgot Logan's password:**
 ```bash
-# From lm-server in the project directory
-cd /home/lm/castle-budget
-# Start a temporary prisma studio session, or reset via:
 docker compose exec api node -e "
   const bcrypt = require('bcrypt');
   const { PrismaClient } = require('@prisma/client');
   const prisma = new PrismaClient();
   bcrypt.hash('NewPassword123!', 12).then(h =>
-    prisma.user.update({ where: { email: 'logan@castle.home' }, data: { passwordHash: h } })
-      .then(() => { console.log('Password reset.'); process.exit(0); })
+    prisma.user.update({ where: { email: 'logan@castle.home' }, data: { passwordHash: h, refreshToken: null } })
+      .then(() => { console.log('Password reset; existing sessions invalidated.'); process.exit(0); })
   );
 "
 ```
+
+Setting `refreshToken: null` invalidates the logged-in session — user must log in again with the new password.
+
+---
+
+## Security notes
+
+- LAN-only; Tailscale for remote (future).
+- JWT access 15 min, refresh 30 days, refresh token rotated on every `/refresh`.
+- Refresh tokens are SHA-256 digested before bcrypt hashing (bcrypt's 72-byte input limit would otherwise cause same-user JWT hashes to collide).
+- `secure` cookies gated on `NODE_ENV=production`.
+- Postgres on internal Docker network only; host port 5433 binds to 127.0.0.1 on the dev VM loopback.
+- No 2FA, no rate limiting — acceptable for a 2-user LAN app.
+- Role-based access: admin (Logan) edits the ledger, member (Carla) records activity (pay bills, record debt payments, contribute to savings, change own password).
