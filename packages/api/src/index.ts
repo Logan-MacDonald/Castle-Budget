@@ -12,7 +12,7 @@ import { savingsRoutes } from './routes/savings'
 import { accountRoutes } from './routes/accounts'
 import { transactionRoutes } from './routes/transactions'
 import { settingsRoutes } from './routes/settings'
-import { authMiddleware } from './middleware/auth'
+import { requireAuth } from './lib/auth-hooks'
 
 const app = Fastify({ logger: process.env.NODE_ENV !== 'production' })
 
@@ -31,20 +31,23 @@ async function main() {
     cookie: { cookieName: 'access_token', signed: false },
   })
 
+  // Public
   app.get('/health', async () => ({ status: 'ok', ts: new Date().toISOString() }))
-
   await app.register(authRoutes, { prefix: '/api/auth' })
 
-  app.addHook('onRequest', authMiddleware)
+  // Protected — all /api/* except /api/auth
+  await app.register(async (protectedScope) => {
+    protectedScope.addHook('onRequest', requireAuth)
 
-  await app.register(dashboardRoutes,   { prefix: '/api/dashboard' })
-  await app.register(billRoutes,        { prefix: '/api/bills' })
-  await app.register(debtRoutes,        { prefix: '/api/debts' })
-  await app.register(incomeRoutes,      { prefix: '/api/income' })
-  await app.register(savingsRoutes,     { prefix: '/api/savings' })
-  await app.register(accountRoutes,     { prefix: '/api/accounts' })
-  await app.register(transactionRoutes, { prefix: '/api/transactions' })
-  await app.register(settingsRoutes,    { prefix: '/api/settings' })
+    await protectedScope.register(dashboardRoutes,   { prefix: '/api/dashboard' })
+    await protectedScope.register(billRoutes,        { prefix: '/api/bills' })
+    await protectedScope.register(debtRoutes,        { prefix: '/api/debts' })
+    await protectedScope.register(incomeRoutes,      { prefix: '/api/income' })
+    await protectedScope.register(savingsRoutes,     { prefix: '/api/savings' })
+    await protectedScope.register(accountRoutes,     { prefix: '/api/accounts' })
+    await protectedScope.register(transactionRoutes, { prefix: '/api/transactions' })
+    await protectedScope.register(settingsRoutes,    { prefix: '/api/settings' })
+  })
 
   const PORT = Number(process.env.PORT) || 3001
   const HOST = process.env.HOST || '0.0.0.0'
