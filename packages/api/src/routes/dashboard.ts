@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { Decimal } from 'decimal.js'
 import { prisma } from '../lib/prisma'
+import { upcomingBillsWithin } from '../lib/dashboard-helpers'
 
 const ZERO = new Decimal(0)
 const TWO = new Decimal(2)
@@ -27,11 +28,8 @@ export async function dashboardRoutes(app: FastifyInstance) {
     const totalPaid = sum(paidBills, b => b.amount)
     const totalUnpaid = sum(unpaidBills, b => b.amount)
 
-    // Bills due in next 7 days — naive month-same-only filter retained here; proper fix in T17.
-    const today = now.getDate()
-    const upcomingBills = unpaidBills
-      .filter(b => b.dueDay >= today && b.dueDay <= today + 7)
-      .sort((a, b) => a.dueDay - b.dueDay)
+    // Bills due in next 7 days — fixed month-crossing in T17.
+    const upcomingBills = upcomingBillsWithin(unpaidBills, now, 7)
 
     // ── Debt summary ──
     const debts = await prisma.debt.findMany({ where: { isActive: true, isPaidOff: false } })
