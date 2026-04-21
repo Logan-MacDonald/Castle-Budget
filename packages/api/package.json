@@ -11,8 +11,8 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "db:generate": "prisma generate",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "test": "dotenv -e ../../.env -- sh -c 'TEST_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5433/castle_budget_test vitest run'",
+    "test:watch": "dotenv -e ../../.env -- sh -c 'TEST_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5433/castle_budget_test vitest'"
   },
   "dependencies": {
     "@fastify/cookie": "^9.3.1",
@@ -28,6 +28,7 @@
   "devDependencies": {
     "@types/bcrypt": "^5.0.2",
     "@types/node": "^20.14.2",
+    "dotenv-cli": "^11.0.0",
     "prisma": "^5.14.0",
     "tsx": "^4.15.7",
     "typescript": "^5.4.5",
