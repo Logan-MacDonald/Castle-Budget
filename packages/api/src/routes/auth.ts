@@ -1,7 +1,14 @@
 import type { FastifyInstance } from 'fastify'
 import bcrypt from 'bcrypt'
+import { createHash, randomUUID } from 'crypto'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
+
+// bcrypt silently truncates inputs at 72 bytes — JWTs are ~170-250 bytes and
+// share a common prefix (header + start of payload), so hashing them directly
+// makes distinct tokens collide. Pre-hash with SHA-256 so bcrypt sees the full
+// token entropy as a fixed-length 64-char hex string.
+const digest = (token: string) => createHash('sha256').update(token).digest('hex')
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -26,12 +33,12 @@ export async function authRoutes(app: FastifyInstance) {
     const payload = { sub: user.id, email: user.email, role: user.role, name: user.name }
 
     const accessToken = app.jwt.sign(payload, { expiresIn: ACCESS_TOKEN_TTL })
-    const refreshToken = app.jwt.sign({ sub: user.id }, { expiresIn: REFRESH_TOKEN_TTL })
+    const refreshToken = app.jwt.sign({ sub: user.id, jti: randomUUID() }, { expiresIn: REFRESH_TOKEN_TTL })
 
     // Persist refresh token hash
     await prisma.user.update({
       where: { id: user.id },
-      data: { refreshToken: await bcrypt.hash(refreshToken, 10) },
+      data: { refreshToken: await bcrypt.hash(digest(refreshToken), 10) },
     })
 
     reply
@@ -67,11 +74,21 @@ export async function authRoutes(app: FastifyInstance) {
     const user = await prisma.user.findUnique({ where: { id: payload.sub } })
     if (!user || !user.refreshToken) return reply.code(401).send({ error: 'Session expired' })
 
-    const valid = await bcrypt.compare(token, user.refreshToken)
-    if (!valid) return reply.code(401).send({ error: 'Invalid refresh token' })
+    const valid = await bcrypt.compare(digest(token), user.refreshToken)
+    if (!valid) {
+      // Stale token presented after rotation — assume compromise, kill the session
+      await prisma.user.update({ where: { id: user.id }, data: { refreshToken: null } })
+      return reply.code(401).send({ error: 'Invalid refresh token' })
+    }
 
+    // Rotate: mint a new refresh token, persist its hash, replace cookie
     const newPayload = { sub: user.id, email: user.email, role: user.role, name: user.name }
     const accessToken = app.jwt.sign(newPayload, { expiresIn: ACCESS_TOKEN_TTL })
+    const newRefreshToken = app.jwt.sign({ sub: user.id }, { expiresIn: REFRESH_TOKEN_TTL })
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { refreshToken: await bcrypt.hash(digest(newRefreshToken), 10) },
+    })
 
     reply
       .setCookie('access_token', accessToken, {
@@ -80,6 +97,13 @@ export async function authRoutes(app: FastifyInstance) {
         sameSite: 'lax',
         path: '/',
         maxAge: ACCESS_TOKEN_TTL,
+      })
+      .setCookie('refresh_token', newRefreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/api/auth',
+        maxAge: REFRESH_TOKEN_TTL,
       })
       .send({ user: newPayload })
   })
