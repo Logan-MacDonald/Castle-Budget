@@ -1,0 +1,11 @@
+# .trivyignore — accepted Trivy findings.
+#
+# Format: one CVE ID per line, plus optional "# rationale" comment above it.
+# Only add entries with a documented reason the finding is being accepted.
+# Example:
+#   # CVE-2024-XXXX: only reachable via feature we don't use; upstream fix pending
+#   CVE-2024-XXXX
+#
+# Policy: critical/high findings must not be silenced — fix them or upgrade.
+# Medium findings accepted only after chainability review.
+# Low findings may be accepted with rationale.
