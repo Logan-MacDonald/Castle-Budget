@@ -10,7 +10,10 @@
     "db:seed": "npm run db:seed -w packages/api",
     "db:studio": "npm run db:studio -w packages/api",
     "test": "npm run test -w packages/api -w packages/web",
-    "lint": "npm run lint -w packages/api -w packages/web"
+    "lint": "npm run lint -w packages/api -w packages/web",
+    "scan": "./scripts/scan-all.sh",
+    "scan:trivy": "./scripts/scan-trivy.sh",
+    "scan:kics": "./scripts/scan-kics.sh"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
