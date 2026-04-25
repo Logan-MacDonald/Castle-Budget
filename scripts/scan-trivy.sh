@@ -2,14 +2,20 @@
 # Trivy security scan — filesystem + built container images.
 # Uses the official Trivy docker image so no host install is needed.
 #
+# Each target is scanned twice:
+#   1) informational pass at HIGH,CRITICAL,MEDIUM,LOW (visibility, no gate)
+#   2) gating pass at HIGH,CRITICAL (--exit-code 1)
+# This matches the merge bar (0 critical / 0 high) without losing
+# medium/low visibility for triage.
+#
 # Usage: ./scripts/scan-trivy.sh
 #
 # Exit codes:
-#   0   no vulnerabilities of severity HIGH/CRITICAL
-#   1   HIGH/CRITICAL found
+#   0   no HIGH/CRITICAL findings (MEDIUM/LOW may be present)
+#   1   HIGH/CRITICAL findings
 #   2   tool error (e.g. docker not available)
 
-set -euo pipefail
+set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
@@ -29,29 +35,42 @@ TRIVY_RUN=(docker run --rm
   -v "$TRIVY_CACHE":/root/.cache/
   "$TRIVY_IMAGE")
 
-# Optional: build images first if they're not already built locally.
-# We don't force a build — caller can `docker compose build` if they want
-# fresh image scans.
+# Skip node_modules for misconfig scanning — third-party packages (e.g.,
+# bcrypt) ship their own Dockerfiles that would otherwise pollute results.
+# Vuln scanning still runs against package-lock.json at root.
+SKIP_DIRS=(--skip-dirs node_modules --skip-dirs "packages/*/node_modules")
 
 rc=0
 
-echo "=== Trivy: filesystem scan (npm deps, secrets, config) ==="
+echo "=== Trivy: filesystem scan — full report (HIGH..LOW) ==="
 "${TRIVY_RUN[@]}" fs \
   --scanners vuln,secret,misconfig \
   --ignorefile /src/.trivyignore \
   --severity HIGH,CRITICAL,MEDIUM,LOW \
+  "${SKIP_DIRS[@]}" \
+  --exit-code 0 \
+  /src || true
+
+echo
+echo "=== Trivy: filesystem scan — gate (HIGH/CRITICAL) ==="
+"${TRIVY_RUN[@]}" fs \
+  --scanners vuln,secret,misconfig \
+  --ignorefile /src/.trivyignore \
+  --severity HIGH,CRITICAL \
+  "${SKIP_DIRS[@]}" \
   --exit-code 1 \
-  --ignore-unfixed=false \
   /src || rc=1
 
 # Scan built images if present — use docker.sock so trivy can inspect
 # images in the host daemon. Mounting docker.sock increases scan privilege,
-# but trivy is read-only. We mount with :ro intent via -v.
+# but trivy is read-only.
 API_IMAGE_ID=$(docker image ls --format '{{.Repository}}:{{.Tag}}' | grep '^castle-budget-api:' | head -1 || true)
 WEB_IMAGE_ID=$(docker image ls --format '{{.Repository}}:{{.Tag}}' | grep '^castle-budget-web:' | head -1 || true)
 
-if [[ -n "${API_IMAGE_ID}" ]]; then
-  echo "=== Trivy: image scan ${API_IMAGE_ID} ==="
+scan_image() {
+  local img="$1"
+  echo
+  echo "=== Trivy: image scan ${img} — full report ==="
   docker run --rm \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v "$TRIVY_CACHE":/root/.cache/ \
@@ -59,32 +78,40 @@ if [[ -n "${API_IMAGE_ID}" ]]; then
     "$TRIVY_IMAGE" image \
       --ignorefile /src/.trivyignore \
       --severity HIGH,CRITICAL,MEDIUM,LOW \
+      --exit-code 0 \
+      "$img" || true
+
+  echo
+  echo "=== Trivy: image scan ${img} — gate (HIGH/CRITICAL) ==="
+  docker run --rm \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    -v "$TRIVY_CACHE":/root/.cache/ \
+    -v "$REPO_ROOT":/src:ro \
+    "$TRIVY_IMAGE" image \
+      --ignorefile /src/.trivyignore \
+      --severity HIGH,CRITICAL \
       --exit-code 1 \
-      "$API_IMAGE_ID" || rc=1
+      "$img" || rc=1
+}
+
+if [[ -n "${API_IMAGE_ID}" ]]; then
+  scan_image "$API_IMAGE_ID"
 else
+  echo
   echo "(skipping api image scan — castle-budget-api not built locally)"
 fi
 
 if [[ -n "${WEB_IMAGE_ID}" ]]; then
-  echo "=== Trivy: image scan ${WEB_IMAGE_ID} ==="
-  docker run --rm \
-    -v /var/run/docker.sock:/var/run/docker.sock \
-    -v "$TRIVY_CACHE":/root/.cache/ \
-    -v "$REPO_ROOT":/src:ro \
-    "$TRIVY_IMAGE" image \
-      --ignorefile /src/.trivyignore \
-      --severity HIGH,CRITICAL,MEDIUM,LOW \
-      --exit-code 1 \
-      "$WEB_IMAGE_ID" || rc=1
+  scan_image "$WEB_IMAGE_ID"
 else
   echo "(skipping web image scan — castle-budget-web not built locally)"
 fi
 
 echo
 if [[ $rc -eq 0 ]]; then
-  echo "Trivy: clean ✓"
+  echo "Trivy: no HIGH/CRITICAL ✓ (MEDIUM/LOW may exist — see full report above)"
 else
-  echo "Trivy: findings present — review output above or consult .trivyignore"
+  echo "Trivy: HIGH/CRITICAL findings present — review output above or consult .trivyignore"
 fi
 
 exit $rc
