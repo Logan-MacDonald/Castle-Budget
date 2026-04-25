@@ -49,7 +49,11 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   })
 
   if (res.status === 401) {
-    // Try refresh
+    // Try refresh once. Don't navigate from here — let AuthContext catch
+    // the throw, set user=null, and React Router redirect to /login via
+    // <RequireAuth>. A `window.location.href` here causes a full page
+    // reload, which re-mounts AuthContext and re-fires /auth/me, which
+    // 401s again → infinite reload loop.
     const refresh = await fetch(`${BASE}/auth/refresh`, { method: 'POST', credentials: 'include' })
     if (refresh.ok) {
       const retry = await fetch(`${BASE}${path}`, {
@@ -60,7 +64,6 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       if (!retry.ok) throw new ApiError(retry.status, await retry.text())
       return parseMoneyFields(await retry.json()) as T
     }
-    window.location.href = '/login'
     throw new ApiError(401, 'Unauthorized')
   }
 
