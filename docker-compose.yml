@@ -84,11 +84,52 @@ services:
     cap_drop:
       - ALL
 
+  # Tailscale sidecar: joins the stack to the user's tailnet. Shares its
+  # network namespace with the edge nginx (see nginx.network_mode below),
+  # so the app is reachable via the tailnet IP/MagicDNS AND via the host
+  # LAN port 80 (mapped here, not on nginx).
+  tailscale:
+    image: tailscale/tailscale:latest
+    hostname: ${TAILSCALE_HOSTNAME:-castle-budget}
+    restart: unless-stopped
+    environment:
+      TS_AUTHKEY: ${TAILSCALE_AUTHKEY}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+      # Don't take over container DNS — we still need Docker's internal
+      # DNS to resolve `api`, `web`, etc. on the `internal` network.
+      TS_EXTRA_ARGS: --accept-dns=false
+    volumes:
+      - tailscale_state:/var/lib/tailscale
+      - /dev/net/tun:/dev/net/tun
+    ports:
+      - "80:80"
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "tailscale status --peers=false >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # tailscaled needs NET_ADMIN + NET_RAW for tun/wireguard; SYS_MODULE
+    # is intentionally NOT added (no kernel module loading from the
+    # container).
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+
   nginx:
     image: nginx:alpine
     restart: unless-stopped
-    ports:
-      - "80:80"
+    # Share the tailscale sidecar's network namespace so binding 80 inside
+    # exposes the app on both the tailnet and (via tailscale's port map)
+    # the LAN.
+    network_mode: "service:tailscale"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
@@ -96,8 +137,8 @@ services:
         condition: service_healthy
       web:
         condition: service_healthy
-    networks:
-      - internal
+      tailscale:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://127.0.0.1/ || exit 1"]
       interval: 30s
@@ -119,6 +160,7 @@ services:
 
 volumes:
   pg_data:
+  tailscale_state:
 
 networks:
   internal:

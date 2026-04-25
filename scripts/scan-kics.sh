@@ -29,11 +29,13 @@ KICS_IMAGE="checkmarx/kics:latest"
 # for the rationale behind each entry. Format is comma-separated on the
 # command line.
 EXCLUDED_QUERIES=(
-  "ce76b7d0-9e77-464d-b86f-c5c48e03e22d"  # Container Capabilities Unrestricted (postgres + nginx need a minimal cap_add)
-  "451d79dc-0588-476a-ad03-3c7f0320abb3"  # Container Traffic Not Bound To Host Interface (LAN-intentional)
+  "1c1325ff-831d-43a1-973e-839ae57dfcc0"  # Volume Has Sensitive Host Directory (tailscale needs /dev/net/tun)
+  "ce76b7d0-9e77-464d-b86f-c5c48e03e22d"  # Container Capabilities Unrestricted (postgres/nginx/tailscale need minimal cap_add)
+  "451d79dc-0588-476a-ad03-3c7f0320abb3"  # Container Traffic Not Bound To Host Interface (LAN+tailnet intentional)
   "bc2908f3-f73c-40a9-8793-c1b7d5544f79"  # Privileged Ports Mapped In Container (port 80 = LAN HTTP)
   "d3499f6d-1651-41bb-a9a7-de925fea487b"  # Unpinned Package Version in Apk Add (alpine package pinning is over-cautious)
   "aa93e17f-b6db-4162-9334-c70334e7ac28"  # Chown Flag Exists (--chown is docker-recommended)
+  "555ab8f9-2001-455e-a077-f2d0f41e2fb9"  # Unpinned Actions Full Length Commit SHA (tag pins from known publishers)
   "8c978947-0ff6-485c-b0c2-0bfca6026466"  # Shared Volumes Between Containers (single-mount pg_data)
 )
 EXCLUDED_QUERIES_CSV=$(IFS=, ; echo "${EXCLUDED_QUERIES[*]}")

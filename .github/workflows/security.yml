@@ -94,6 +94,6 @@ jobs:
           path: .
           fail_on: high,critical
           exclude_paths: 'node_modules,packages/api/node_modules,packages/web/node_modules,.kics-results'
-          exclude_queries: 'ce76b7d0-9e77-464d-b86f-c5c48e03e22d,451d79dc-0588-476a-ad03-3c7f0320abb3,bc2908f3-f73c-40a9-8793-c1b7d5544f79,d3499f6d-1651-41bb-a9a7-de925fea487b,aa93e17f-b6db-4162-9334-c70334e7ac28,8c978947-0ff6-485c-b0c2-0bfca6026466'
+          exclude_queries: '1c1325ff-831d-43a1-973e-839ae57dfcc0,ce76b7d0-9e77-464d-b86f-c5c48e03e22d,451d79dc-0588-476a-ad03-3c7f0320abb3,bc2908f3-f73c-40a9-8793-c1b7d5544f79,d3499f6d-1651-41bb-a9a7-de925fea487b,aa93e17f-b6db-4162-9334-c70334e7ac28,555ab8f9-2001-455e-a077-f2d0f41e2fb9,8c978947-0ff6-485c-b0c2-0bfca6026466'
           enable_comments: false
           output_formats: 'json'

@@ -15,38 +15,54 @@ listed here is MEDIUM or below.
 
 | Severity | Query ID | Rule | Files | Decision |
 |----------|----------|------|-------|----------|
-| MEDIUM | `ce76b7d0-9e77-464d-b86f-c5c48e03e22d` | Container Capabilities Unrestricted | postgres, nginx (edge) | accept |
-| MEDIUM | `451d79dc-0588-476a-ad03-3c7f0320abb3` | Container Traffic Not Bound To Host Interface | nginx (edge) | accept |
-| MEDIUM | `bc2908f3-f73c-40a9-8793-c1b7d5544f79` | Privileged Ports Mapped In Container | nginx (edge) | accept |
+| HIGH | `1c1325ff-831d-43a1-973e-839ae57dfcc0` | Volume Has Sensitive Host Directory | tailscale (`/dev/net/tun`) | accept |
+| MEDIUM | `ce76b7d0-9e77-464d-b86f-c5c48e03e22d` | Container Capabilities Unrestricted | postgres, nginx (edge), tailscale | accept |
+| MEDIUM | `451d79dc-0588-476a-ad03-3c7f0320abb3` | Container Traffic Not Bound To Host Interface | tailscale (port 80 sidecar) | accept |
+| MEDIUM | `bc2908f3-f73c-40a9-8793-c1b7d5544f79` | Privileged Ports Mapped In Container | tailscale (port 80 sidecar) | accept |
 | MEDIUM | `d3499f6d-1651-41bb-a9a7-de925fea487b` | Unpinned Package Version in Apk Add | packages/api/Dockerfile | accept |
 | LOW | `aa93e17f-b6db-4162-9334-c70334e7ac28` | Chown Flag Exists | packages/api/Dockerfile | accept |
+| LOW | `555ab8f9-2001-455e-a077-f2d0f41e2fb9` | Unpinned Actions Full Length Commit SHA | .github/workflows/security.yml | accept |
 | INFO | `8c978947-0ff6-485c-b0c2-0bfca6026466` | Shared Volumes Between Containers | docker-compose.yml | accept |
 
 ### Rationale
 
-**Container Capabilities Unrestricted (MEDIUM × 2)** —
-All four services run with `cap_drop: [ALL]`. Postgres and the edge nginx
-need a small `cap_add` set for legitimate startup work (postgres' root
-entrypoint chowns the data dir then setuid()s to the postgres user; nginx
-master forks workers and binds port 80). KICS flags any non-empty
-`cap_add` as "unrestricted." The added caps are the minimum set required
-for the image to function and are far below the default capability set
-that would apply without `cap_drop: [ALL]`.
+**Volume Has Sensitive Host Directory (HIGH × 1)** —
+The tailscale sidecar mounts `/dev/net/tun` to operate as a kernel-mode
+WireGuard endpoint. This is the canonical Tailscale-in-docker pattern;
+without the tun device, no tailnet routing. Mitigations applied: only
+the single tun character device is exposed (not all of `/dev`); the
+container drops all caps and re-adds only `NET_ADMIN` + `NET_RAW`
+(intentionally NOT `SYS_MODULE`, so it cannot load kernel modules);
+`no-new-privileges:true` is set. Userspace mode (`TS_USERSPACE=true`)
+would remove the mount but requires Tailscale Serve config and adds
+networking overhead — revisit if the surface trade-off changes.
+
+**Container Capabilities Unrestricted (MEDIUM × 3)** —
+All five services run with `cap_drop: [ALL]`. Postgres, the edge nginx,
+and the tailscale sidecar need a small `cap_add` set for legitimate
+startup work (postgres' root entrypoint chowns the data dir then
+setuid()s; nginx master binds 80 and forks workers; tailscaled needs
+NET_ADMIN/NET_RAW for tun/wireguard). KICS flags any non-empty
+`cap_add` as "unrestricted." The added caps are the minimum set
+required for each image to function and are far below the default
+capability set that would apply without `cap_drop: [ALL]`.
 
 **Container Traffic Not Bound To Host Interface (MEDIUM × 1)** —
-The edge nginx exposes `80:80`, which compose binds to `0.0.0.0:80`.
-This is intentional: the app is a LAN-only home budgeting tool meant to
-be reachable from the household's devices via `http://budget.home`. A
-loopback-only bind would defeat the purpose. Network reachability is
-controlled at the LAN/router level, not by docker port binding.
+The tailscale sidecar exposes `80:80` (mapping moved here from nginx
+when nginx adopted `network_mode: service:tailscale`). compose binds
+this to `0.0.0.0:80`. This is intentional: the app is reachable both
+via the LAN (`http://budget.home`) and via the tailnet (MagicDNS
+hostname). A loopback-only bind would break LAN access; reachability
+is controlled at the LAN/router and Tailscale ACL level, not by docker
+port binding.
 
 **Privileged Ports Mapped In Container (MEDIUM × 1)** —
-Edge nginx listens on port 80 because it is the de-facto port for HTTP
-on the LAN. The container drops all caps and re-adds only
-`NET_BIND_SERVICE` (plus chown/setuid/setgid for nginx's master→worker
-handoff). This is the standard hardened pattern for a public-facing
-nginx; the alternative (8080+) would require LAN clients to type a port
-number, with no security gain.
+The tailscale sidecar maps port 80 because it shares its network
+namespace with the edge nginx, which serves HTTP on the de-facto port
+80. The sidecar drops all caps and re-adds only `NET_ADMIN` +
+`NET_RAW` (needed for the tun device); nginx separately re-adds
+`NET_BIND_SERVICE`. The alternative (8080+) would require LAN clients
+to type a port number, with no security gain.
 
 **Unpinned Package Version in Apk Add (MEDIUM × 1)** —
 `packages/api/Dockerfile` runs `apk add --no-cache openssl` without
@@ -64,6 +80,18 @@ form produces a single layer and is the docker-recommended pattern; the
 `RUN chown` alternative would add a layer and double the image's
 file-content size on disk (because the rewritten files form a new layer
 that doesn't dedupe with the original). Functionally equivalent.
+
+**Unpinned Actions Full Length Commit SHA (LOW × 7)** —
+`.github/workflows/security.yml` pins actions to release tags
+(`@v0.36.0`, `@v4`) rather than full commit SHAs. SHA pinning protects
+against tag-mutation supply-chain attacks but adds significant
+maintenance overhead (every action upgrade is a manual SHA lookup). The
+actions used (`actions/checkout`, `actions/setup-node`,
+`docker/setup-buildx-action`, `docker/build-push-action`,
+`aquasecurity/trivy-action`, `checkmarx/kics-github-action`) are from
+well-known publishers and tag protection is in place upstream;
+asymmetry-of-effort doesn't favour SHA pinning for a 2-user LAN app.
+Revisit if the project grows or hosts secrets in CI.
 
 **Shared Volumes Between Containers (INFO × 1)** —
 Reported because the `pg_data` named volume is referenced from the
