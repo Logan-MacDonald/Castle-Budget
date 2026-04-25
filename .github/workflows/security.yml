@@ -32,7 +32,7 @@ jobs:
       # Filesystem scan: npm vulns (package-lock.json), secrets, and IaC
       # misconfigs in source Dockerfiles. Skip node_modules so vendored
       # third-party Dockerfiles don't pollute results.
-      - uses: aquasecurity/trivy-action@0.28.0
+      - uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: .
@@ -66,7 +66,7 @@ jobs:
           tags: castle-budget-web:ci
           load: true
       - name: Scan api image
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: castle-budget-api:ci
           severity: HIGH,CRITICAL
@@ -74,7 +74,7 @@ jobs:
           ignore-unfixed: false
           trivyignores: .trivyignore
       - name: Scan web image
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: castle-budget-web:ci
           severity: HIGH,CRITICAL
