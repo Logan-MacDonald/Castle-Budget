@@ -21,6 +21,19 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # postgres entrypoint runs as root, fixes data-dir ownership, then
+    # setuid()s to the postgres user. These caps are the minimum set for
+    # that handoff.
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETUID
+      - SETGID
 
   api:
     build:
@@ -48,6 +61,10 @@ services:
       timeout: 3s
       retries: 3
       start_period: 20s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
 
   web:
     build:
@@ -62,6 +79,10 @@ services:
       timeout: 3s
       retries: 3
       start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
 
   nginx:
     image: nginx:alpine
@@ -83,6 +104,18 @@ services:
       timeout: 3s
       retries: 3
       start_period: 5s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # nginx master forks workers and drops them to the nginx user; bind to
+    # the privileged port 80 requires NET_BIND_SERVICE.
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+      - NET_BIND_SERVICE
 
 volumes:
   pg_data:

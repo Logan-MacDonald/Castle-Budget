@@ -9,3 +9,10 @@
 # Policy: critical/high findings must not be silenced — fix them or upgrade.
 # Medium findings accepted only after chainability review.
 # Low findings may be accepted with rationale.
+
+# CVE-2026-4367: libxpm out-of-bounds read in nginxinc/nginx-unprivileged:alpine
+# (alpine 3.23.4 ships libxpm 3.5.17-r0; fix in 3.5.19-r0). Web nginx serves
+# static SPA files; libxpm is not in any code path we exercise. Re-check on
+# next nginx-unprivileged base bump.
+# Full rationale: docs/superpowers/specs/2026-04-25-security-accepts.md
+CVE-2026-4367

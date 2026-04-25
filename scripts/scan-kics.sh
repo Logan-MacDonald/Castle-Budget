@@ -25,11 +25,23 @@ mkdir -p "$OUT_DIR"
 
 KICS_IMAGE="checkmarx/kics:latest"
 
+# Excluded query IDs — see docs/superpowers/specs/2026-04-25-security-accepts.md
+# for the rationale behind each entry. Format is comma-separated on the
+# command line.
+EXCLUDED_QUERIES=(
+  "ce76b7d0-9e77-464d-b86f-c5c48e03e22d"  # Container Capabilities Unrestricted (postgres + nginx need a minimal cap_add)
+  "451d79dc-0588-476a-ad03-3c7f0320abb3"  # Container Traffic Not Bound To Host Interface (LAN-intentional)
+  "bc2908f3-f73c-40a9-8793-c1b7d5544f79"  # Privileged Ports Mapped In Container (port 80 = LAN HTTP)
+  "d3499f6d-1651-41bb-a9a7-de925fea487b"  # Unpinned Package Version in Apk Add (alpine package pinning is over-cautious)
+  "aa93e17f-b6db-4162-9334-c70334e7ac28"  # Chown Flag Exists (--chown is docker-recommended)
+  "8c978947-0ff6-485c-b0c2-0bfca6026466"  # Shared Volumes Between Containers (single-mount pg_data)
+)
+EXCLUDED_QUERIES_CSV=$(IFS=, ; echo "${EXCLUDED_QUERIES[*]}")
+
 echo "=== KICS: IaC scan (Dockerfile, docker-compose, nginx, workflows) ==="
 
 # KICS writes reports into the mounted output dir. --no-progress keeps
 # console output tight; --report-formats json lets us parse counts below.
-# We scan the whole repo; path-include could narrow it.
 docker run --rm \
   -v "$REPO_ROOT":/path:ro \
   -v "$OUT_DIR":/output \
@@ -38,6 +50,7 @@ docker run --rm \
     --output-path /output \
     --report-formats json \
     --exclude-paths "/path/node_modules,/path/packages/*/node_modules,/path/.kics-results" \
+    --exclude-queries "$EXCLUDED_QUERIES_CSV" \
     --no-progress \
     --no-color || true   # KICS exits non-zero if ANY finding; we classify below
 
