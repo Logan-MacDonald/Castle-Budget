@@ -1,0 +1,99 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Run jobs in parallel; fail-fast off so a lint failure doesn't hide a
+# scanner failure (or vice versa).
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: ESLint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+
+  trivy-fs:
+    name: Trivy (filesystem)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Filesystem scan: npm vulns (package-lock.json), secrets, and IaC
+      # misconfigs in source Dockerfiles. Skip node_modules so vendored
+      # third-party Dockerfiles don't pollute results.
+      - uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          ignore-unfixed: false
+          trivyignores: .trivyignore
+          skip-dirs: node_modules,packages/api/node_modules,packages/web/node_modules
+
+  trivy-images:
+    name: Trivy (built images)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      # Build the api and web images so Trivy can inspect their OS + npm
+      # layers. Loaded into the local docker daemon, not pushed.
+      - name: Build api image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: packages/api/Dockerfile
+          tags: castle-budget-api:ci
+          load: true
+      - name: Build web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: packages/web/Dockerfile
+          tags: castle-budget-web:ci
+          load: true
+      - name: Scan api image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: castle-budget-api:ci
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          ignore-unfixed: false
+          trivyignores: .trivyignore
+      - name: Scan web image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: castle-budget-web:ci
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          ignore-unfixed: false
+          trivyignores: .trivyignore
+
+  kics:
+    name: KICS (IaC)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Same accept-set as scripts/scan-kics.sh — see
+      # docs/superpowers/specs/2026-04-25-security-accepts.md.
+      - uses: checkmarx/kics-github-action@v2.1.20
+        with:
+          path: .
+          fail_on: high,critical
+          exclude_paths: 'node_modules,packages/api/node_modules,packages/web/node_modules,.kics-results'
+          exclude_queries: 'ce76b7d0-9e77-464d-b86f-c5c48e03e22d,451d79dc-0588-476a-ad03-3c7f0320abb3,bc2908f3-f73c-40a9-8793-c1b7d5544f79,d3499f6d-1651-41bb-a9a7-de925fea487b,aa93e17f-b6db-4162-9334-c70334e7ac28,8c978947-0ff6-485c-b0c2-0bfca6026466'
+          enable_comments: false
+          output_formats: 'json'
