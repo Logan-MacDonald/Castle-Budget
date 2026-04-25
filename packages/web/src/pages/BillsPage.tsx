@@ -49,7 +49,6 @@ export function BillsPage() {
   }
 
   const firstBills  = bills.filter(b => b.payPeriod === 'FIRST'  || b.payPeriod === 'BOTH')
-  const fifthBills  = bills.filter(b => b.payPeriod === 'FIFTEENTH' || b.payPeriod === 'BOTH' && !firstBills.find(f => f.id === b.id))
   const otherBills  = bills.filter(b => !['FIRST','FIFTEENTH','BOTH'].includes(b.payPeriod))
 
   // Deduplicate BOTH bills — show under 1st only

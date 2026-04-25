@@ -3,12 +3,10 @@ import Fastify, { type FastifyInstance } from 'fastify'
 import cookie from '@fastify/cookie'
 import jwt from '@fastify/jwt'
 import bcrypt from 'bcrypt'
-import { createHash } from 'node:crypto'
 import { PrismaClient } from '@prisma/client'
 import { authRoutes } from './auth'
 
 const prisma = new PrismaClient()
-const digest = (s: string) => createHash('sha256').update(s).digest('hex')
 
 async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({ logger: false })

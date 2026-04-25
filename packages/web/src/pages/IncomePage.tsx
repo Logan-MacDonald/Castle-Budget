@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { incomeApi, settingsApi, type IncomeSource, type AuthUser } from '../lib/api'
 import { Plus, X, Pencil } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
@@ -173,11 +173,11 @@ export function SettingsPage() {
   const [pwMsg, setPwMsg] = useState('')
   const [showAddUser, setShowAddUser] = useState(false)
 
-  async function loadUsers() {
+  const loadUsers = useCallback(async () => {
     if (user?.role === 'ADMIN') setUsers(await settingsApi.users())
-  }
+  }, [user?.role])
 
-  useEffect(() => { loadUsers() }, [])
+  useEffect(() => { loadUsers() }, [loadUsers])
 
   async function handlePwChange() {
     if (pwForm.newPassword !== pwForm.confirm) { setPwMsg('Passwords do not match'); return }

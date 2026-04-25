@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { dashboardApi, type DashboardData } from '../lib/api'
 import { TrendingDown, TrendingUp, AlertCircle } from 'lucide-react'
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 

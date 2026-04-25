@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { savingsApi, type SavingsGoal } from '../lib/api'
-import { Plus, X, Target } from 'lucide-react'
+import { Plus, X } from 'lucide-react'
 
 function fmt(n: number) { return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }) }
 

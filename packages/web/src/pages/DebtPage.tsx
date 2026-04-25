@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { debtsApi, type Debt, type StrategyResult } from '../lib/api'
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { Plus, X, TrendingDown, Zap } from 'lucide-react'
 
 function fmt(n: number, decimals = 0) {
@@ -19,7 +19,7 @@ export function DebtPage() {
   const [showAdd, setShowAdd] = useState(false)
   const [editDebt, setEditDebt] = useState<Debt | null>(null)
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true)
     const [d, s] = await Promise.all([
       debtsApi.list(),
@@ -28,9 +28,9 @@ export function DebtPage() {
     setDebts(d)
     setStrategy(s)
     setLoading(false)
-  }
+  }, [method, extra])
 
-  useEffect(() => { load() }, [method, extra])
+  useEffect(() => { load() }, [load])
 
   const totalDebt = debts.reduce((s, d) => s + d.currentBalance, 0)
   const totalOriginal = debts.reduce((s, d) => s + d.originalBalance, 0)
