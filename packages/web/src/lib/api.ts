@@ -41,12 +41,20 @@ function parseMoneyFields<T>(obj: T): T {
   return out
 }
 
+function buildInit(options: RequestInit): RequestInit {
+  // Only set Content-Type when we actually have a body — Fastify 5
+  // rejects requests that claim application/json with an empty body
+  // (FST_ERR_CTP_EMPTY_JSON_BODY). DELETE and POST-without-body would
+  // otherwise trip on it.
+  const headers: Record<string, string> = { ...(options.headers as Record<string, string> | undefined) }
+  if (options.body && !('Content-Type' in headers)) {
+    headers['Content-Type'] = 'application/json'
+  }
+  return { ...options, headers, credentials: 'include' }
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', ...options.headers },
-    credentials: 'include',
-  })
+  const res = await fetch(`${BASE}${path}`, buildInit(options))
 
   if (res.status === 401) {
     // Try refresh once. Don't navigate from here — let AuthContext catch
@@ -56,11 +64,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     // 401s again → infinite reload loop.
     const refresh = await fetch(`${BASE}/auth/refresh`, { method: 'POST', credentials: 'include' })
     if (refresh.ok) {
-      const retry = await fetch(`${BASE}${path}`, {
-        ...options,
-        headers: { 'Content-Type': 'application/json', ...options.headers },
-        credentials: 'include',
-      })
+      const retry = await fetch(`${BASE}${path}`, buildInit(options))
       if (!retry.ok) throw new ApiError(retry.status, await retry.text())
       return parseMoneyFields(await retry.json()) as T
     }
