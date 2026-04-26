@@ -193,25 +193,19 @@ enum DebtType {
 // ─── Savings ─────────────────────────────────────────────────────────────────
 
 model SavingsGoal {
-  id              String          @id @default(cuid())
+  id              String    @id @default(cuid())
   name            String
-  kind            SavingsKind     @default(CASH)
-  targetAmount    Decimal         @db.Decimal(12, 2)
-  startingBalance Decimal         @default(0) @db.Decimal(12, 2)
-  currentAmount   Decimal         @default(0) @db.Decimal(12, 2)
+  targetAmount    Decimal   @db.Decimal(12, 2)
+  cashAmount      Decimal   @default(0) @db.Decimal(12, 2)
+  investedAmount  Decimal   @default(0) @db.Decimal(12, 2)
   targetDate      DateTime?
   accountId       String?
-  isComplete      Boolean         @default(false)
+  isComplete      Boolean   @default(false)
   notes           String?
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  account         Account?        @relation(fields: [accountId], references: [id])
-}
-
-enum SavingsKind {
-  CASH
-  INVESTMENT
+  account         Account?  @relation(fields: [accountId], references: [id])
 }
 
 // ─── Transactions ─────────────────────────────────────────────────────────────

@@ -110,8 +110,8 @@ async function main() {
   if (existingSavingsCount === 0) {
     await prisma.savingsGoal.createMany({
       data: [
-        { name: 'E*Trade Main Brokerage', targetAmount: 0, currentAmount: 0 },
-        { name: "E*Trade (Will's Account)", targetAmount: 0, currentAmount: 0 },
+        { name: 'E*Trade Main Brokerage', targetAmount: 0, cashAmount: 0, investedAmount: 0 },
+        { name: "E*Trade (Will's Account)", targetAmount: 0, cashAmount: 0, investedAmount: 0 },
       ],
     })
 

@@ -146,7 +146,6 @@ export const savingsApi = {
   list: () => api.get<SavingsGoal[]>('/savings'),
   create: (data: Partial<SavingsGoal>) => api.post<SavingsGoal>('/savings', data),
   update: (id: string, data: Partial<SavingsGoal>) => api.patch<SavingsGoal>(`/savings/${id}`, data),
-  contribute: (id: string, amount: number) => api.post(`/savings/${id}/contribute`, { amount }),
   delete: (id: string) => api.delete(`/savings/${id}`),
 }
 
@@ -207,8 +206,8 @@ export type IncomeSource = {
 }
 
 export type SavingsGoal = {
-  id: string; name: string; kind: 'CASH' | 'INVESTMENT'
-  targetAmount: number; startingBalance: number; currentAmount: number
+  id: string; name: string
+  targetAmount: number; cashAmount: number; investedAmount: number
   targetDate?: string; isComplete: boolean; accountId?: string; notes?: string
 }
 

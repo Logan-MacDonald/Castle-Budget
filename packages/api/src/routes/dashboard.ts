@@ -65,7 +65,12 @@ export async function dashboardRoutes(app: FastifyInstance) {
     // ── Savings ──
     const savingsGoals = await prisma.savingsGoal.findMany({ where: { isComplete: false } })
     const totalSavingsTarget = sum(savingsGoals, g => g.targetAmount)
-    const totalSavingsCurrent = sum(savingsGoals, g => g.currentAmount)
+    // currentAmount was retired when savings split into cash + invested
+    // pools — the dashboard total is the sum of both pools per goal.
+    const totalSavingsCurrent = savingsGoals.reduce(
+      (acc, g) => acc.plus(new Decimal(g.cashAmount as any)).plus(new Decimal(g.investedAmount as any)),
+      ZERO,
+    )
 
     // ── Accounts ──
     const accounts = await prisma.account.findMany({ where: { isActive: true } })
