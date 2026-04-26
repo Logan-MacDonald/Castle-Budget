@@ -61,11 +61,26 @@ export function BillsPage() {
   // Deduplicate BOTH bills — show under 1st only
   const fifteenthBills = bills.filter(b => b.payPeriod === 'FIFTEENTH')
 
+  // For the displayed month/year, has the bill's dueDay already passed?
+  // Past months: yes. Future months: no. Current month: only if today's
+  // calendar day >= dueDay. autoPay bills then count as effectively paid
+  // — green check + strikethrough — without needing a manual click.
+  const today = new Date()
+  const todayMonth = today.getMonth() + 1
+  const todayYear  = today.getFullYear()
+  const monthInPast    = year < todayYear || (year === todayYear && month < todayMonth)
+  const isCurrentMonth = year === todayYear && month === todayMonth
+  function dueDayPassed(dueDay: number): boolean {
+    if (monthInPast) return true
+    if (isCurrentMonth) return today.getDate() >= dueDay
+    return false
+  }
+  const isEffectivelyPaid = (b: BillWithPayment) => b.isPaid || (b.autoPay && dueDayPassed(b.dueDay))
+
   const totalBills = bills.reduce((s, b) => s + b.amount, 0)
-  // autoPay bills count as paid for the running total — they're already
-  // deducted from available funds. The check button still works on them
-  // (in case auto-pay failed and a manual payment was made).
-  const totalPaid  = bills.filter(b => b.autoPay || b.isPaid).reduce((s, b) => s + b.amount, 0)
+  // autoPay bills count as paid for the running total *once their due
+  // day has passed in this view* — until then they're still upcoming.
+  const totalPaid  = bills.filter(isEffectivelyPaid).reduce((s, b) => s + b.amount, 0)
 
   return (
     <>
@@ -101,10 +116,10 @@ export function BillsPage() {
           <div style={{ flex: 1 }} />
           <div style={{ minWidth: 160 }}>
             <div style={{ fontSize: '0.72rem', color: 'var(--castle-300)', marginBottom: 6 }}>
-              {bills.filter(b => b.autoPay || b.isPaid).length} of {bills.length} paid
+              {bills.filter(isEffectivelyPaid).length} of {bills.length} paid
             </div>
             <div className="progress-track" style={{ height: 6, background: 'rgba(255,255,255,.1)' }}>
-              <div className="progress-fill green" style={{ width: `${bills.length ? (bills.filter(b=> b.autoPay || b.isPaid).length/bills.length)*100 : 0}%` }} />
+              <div className="progress-fill green" style={{ width: `${bills.length ? (bills.filter(isEffectivelyPaid).length/bills.length)*100 : 0}%` }} />
             </div>
           </div>
         </div>
@@ -118,9 +133,9 @@ export function BillsPage() {
             </div>
           ) : (
             <>
-              <BillSection title="1st Paycheck Bills" bills={firstBills} onToggle={togglePaid} onEdit={setEditBill} />
-              <BillSection title="15th Paycheck Bills" bills={fifteenthBills} onToggle={togglePaid} onEdit={setEditBill} />
-              {otherBills.length > 0 && <BillSection title="Other" bills={otherBills} onToggle={togglePaid} onEdit={setEditBill} />}
+              <BillSection title="1st Paycheck Bills" bills={firstBills} onToggle={togglePaid} onEdit={setEditBill} isEffectivelyPaid={isEffectivelyPaid} />
+              <BillSection title="15th Paycheck Bills" bills={fifteenthBills} onToggle={togglePaid} onEdit={setEditBill} isEffectivelyPaid={isEffectivelyPaid} />
+              {otherBills.length > 0 && <BillSection title="Other" bills={otherBills} onToggle={togglePaid} onEdit={setEditBill} isEffectivelyPaid={isEffectivelyPaid} />}
             </>
           )}
         </div>
@@ -132,11 +147,12 @@ export function BillsPage() {
   )
 }
 
-function BillSection({ title, bills, onToggle, onEdit }: {
+function BillSection({ title, bills, onToggle, onEdit, isEffectivelyPaid }: {
   title: string
   bills: BillWithPayment[]
   onToggle: (b: BillWithPayment) => void
   onEdit: (b: Bill) => void
+  isEffectivelyPaid: (b: BillWithPayment) => boolean
 }) {
   if (bills.length === 0) return null
   const total = bills.reduce((s, b) => s + b.amount, 0)
@@ -149,43 +165,48 @@ function BillSection({ title, bills, onToggle, onEdit }: {
       </div>
       <div className="card">
         <div className="bill-list" style={{ padding: '8px 0' }}>
-          {bills.sort((a,b) => a.dueDay - b.dueDay).map(bill => (
-            <div
-              key={bill.id}
-              className={`bill-row${bill.isPaid ? ' paid' : ''}`}
-              onClick={() => onEdit(bill)}
-              style={{ cursor: 'pointer' }}
-            >
-              <button
-                className={`check-btn${bill.isPaid ? ' paid' : ''}`}
-                onClick={e => { e.stopPropagation(); onToggle(bill) }}
+          {bills.sort((a,b) => a.dueDay - b.dueDay).map(bill => {
+            const paid = isEffectivelyPaid(bill)
+            return (
+              <div
+                key={bill.id}
+                className={`bill-row${paid ? ' paid' : ''}`}
+                onClick={() => onEdit(bill)}
+                style={{ cursor: 'pointer' }}
               >
-                {bill.isPaid && <Check size={14} />}
-              </button>
-              <div className="bill-info">
-                <div className="bill-name">
-                  {bill.name}
-                  {bill.debtId && (
-                    <Link2 size={11} style={{ marginLeft: 6, opacity: 0.5 }} aria-label="Linked to a debt" />
-                  )}
+                <button
+                  className={`check-btn${paid ? ' paid' : ''}`}
+                  onClick={e => { e.stopPropagation(); onToggle(bill) }}
+                >
+                  {paid && <Check size={14} />}
+                </button>
+                <div className="bill-info">
+                  <div className="bill-name">
+                    {bill.name}
+                    {bill.debtId && (
+                      <Link2 size={11} style={{ marginLeft: 6, opacity: 0.5 }} aria-label="Linked to a debt" />
+                    )}
+                  </div>
+                  <div className="bill-meta">
+                    Due {bill.dueDay}{ordinal(bill.dueDay)}
+                    {bill.autoPay && ' · Auto-pay'}
+                    {bill.isBusiness && ' · RCS'}
+                    {bill.debtId && ' · Linked to debt'}
+                    {bill.isPaid && bill.payment?.paidAt && ` · Paid ${new Date(bill.payment.paidAt).toLocaleDateString()}`}
+                  </div>
                 </div>
-                <div className="bill-meta">
-                  Due {bill.dueDay}{ordinal(bill.dueDay)}
-                  {bill.autoPay && ' · Auto-pay'}
-                  {bill.isBusiness && ' · RCS'}
-                  {bill.debtId && ' · Linked to debt'}
-                  {bill.isPaid && bill.payment?.paidAt && ` · Paid ${new Date(bill.payment.paidAt).toLocaleDateString()}`}
-                </div>
+                <div className="bill-amount">{fmt(bill.amount)}</div>
+                {bill.autoPay && paid
+                  ? <span className="badge badge-blue">Auto-paid</span>
+                  : bill.autoPay
+                  ? <span className="badge badge-blue">Auto</span>
+                  : bill.isPaid
+                  ? <span className="badge badge-green">✓ Paid</span>
+                  : <span className="badge badge-gold">Due</span>
+                }
               </div>
-              <div className="bill-amount">{fmt(bill.amount)}</div>
-              {bill.autoPay
-                ? <span className="badge badge-blue">Auto-paid</span>
-                : bill.isPaid
-                ? <span className="badge badge-green">✓ Paid</span>
-                : <span className="badge badge-gold">Due</span>
-              }
-            </div>
-          ))}
+            )
+          })}
         </div>
       </div>
     </div>
