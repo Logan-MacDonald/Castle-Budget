@@ -67,11 +67,24 @@ export async function billRoutes(app: FastifyInstance) {
   })
 
   // PATCH /api/bills/:id
+  // Bill.debtId has a unique constraint (one bill per debt). If the
+  // caller is setting debtId to a value that another bill currently
+  // owns, transparently clear the other bill's link first so the swap
+  // works without a P2002 error.
   app.patch('/:id', { onRequest: [requireAdmin] }, async (request, reply) => {
     const body = billSchema.partial().safeParse(request.body)
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() })
     const { id } = request.params as { id: string }
-    return prisma.bill.update({ where: { id }, data: body.data })
+
+    return prisma.$transaction(async (tx) => {
+      if (body.data.debtId) {
+        await tx.bill.updateMany({
+          where: { debtId: body.data.debtId, id: { not: id } },
+          data:  { debtId: null },
+        })
+      }
+      return tx.bill.update({ where: { id }, data: body.data })
+    })
   })
 
   // DELETE /api/bills/:id — soft delete
