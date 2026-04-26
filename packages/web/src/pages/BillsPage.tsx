@@ -19,18 +19,22 @@ export function BillsPage() {
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [year, setYear] = useState(now.getFullYear())
   const [bills, setBills] = useState<BillWithPayment[]>([])
+  const [allBills, setAllBills] = useState<Bill[]>([])
   const [debts, setDebts] = useState<Debt[]>([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
   const [editBill, setEditBill] = useState<Bill | null>(null)
+  const [showRecord, setShowRecord] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [b, d] = await Promise.all([
+    const [b, all, d] = await Promise.all([
       billsApi.monthly(month, year),
+      billsApi.list(),
       debtsApi.list(),
     ])
     setBills(b)
+    setAllBills(all)
     setDebts(d)
     setLoading(false)
   }, [month, year])
@@ -138,10 +142,33 @@ export function BillsPage() {
               {otherBills.length > 0 && <BillSection title="Other" bills={otherBills} onToggle={togglePaid} onEdit={setEditBill} isEffectivelyPaid={isEffectivelyPaid} />}
             </>
           )}
+
+          {/* Record a charge for a VARIABLE bill (Orkin etc.). They only
+              show in the list once a charge has been recorded for the
+              month. */}
+          {!loading && allBills.some(b => b.payPeriod === 'VARIABLE' && b.isActive && !bills.find(mb => mb.id === b.id)) && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              style={{ alignSelf: 'flex-start', marginTop: 4 }}
+              onClick={() => setShowRecord(true)}
+            >
+              <Plus size={14} /> Record variable charge
+            </button>
+          )}
         </div>
       </div>
 
       {showAdd && <BillModal debts={debts} onClose={() => setShowAdd(false)} onSaved={load} />}
+      {showRecord && (
+        <RecordChargeModal
+          month={month}
+          year={year}
+          variableBills={allBills.filter(b => b.payPeriod === 'VARIABLE' && b.isActive && !bills.find(mb => mb.id === b.id))}
+          onClose={() => setShowRecord(false)}
+          onSaved={load}
+        />
+      )}
       {editBill && <BillModal bill={editBill} debts={debts} onClose={() => setEditBill(null)} onSaved={load} />}
     </>
   )
@@ -346,4 +373,75 @@ function ordinal(n?: number) {
   if (!n) return ''
   const s = ['th','st','nd','rd'], v = n % 100
   return s[(v - 20) % 10] ?? s[v] ?? s[0]
+}
+
+function RecordChargeModal({ month, year, variableBills, onClose, onSaved }: {
+  month: number
+  year: number
+  variableBills: Bill[]
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [billId, setBillId] = useState<string>(variableBills[0]?.id ?? '')
+  const [amount, setAmount] = useState<string>('')
+  const [alreadyPaid, setAlreadyPaid] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const selected = variableBills.find(b => b.id === billId)
+
+  async function handleSave() {
+    if (!billId || !amount) return
+    setSaving(true); setError('')
+    try {
+      await billsApi.record(billId, month, year, parseFloat(amount), alreadyPaid)
+      onSaved(); onClose()
+    } catch (e: any) {
+      setError(`Save failed: ${e?.message ?? e}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="modal-title">Record variable charge</h2>
+          <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={14} /></button>
+        </div>
+        <div className="modal-body">
+          {error && <div className="login-error" style={{ marginBottom: 12 }}>{error}</div>}
+          <div className="form-group">
+            <label className="form-label">Bill</label>
+            <select className="form-input" value={billId} onChange={e => setBillId(e.target.value)}>
+              {variableBills.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Amount for {MONTHS[month - 1]} {year}</label>
+            <input
+              className="form-input"
+              type="number"
+              step="0.01"
+              value={amount}
+              onChange={e => setAmount(e.target.value)}
+              placeholder={selected ? String(selected.amount) : '0.00'}
+              autoFocus
+            />
+          </div>
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer', fontSize: '0.875rem' }}>
+            <input type="checkbox" checked={alreadyPaid} onChange={e => setAlreadyPaid(e.target.checked)} />
+            Already paid
+          </label>
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving || !amount || !billId}>
+            {saving ? 'Saving…' : 'Record'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }

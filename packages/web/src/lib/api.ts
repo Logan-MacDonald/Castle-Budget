@@ -114,6 +114,8 @@ export const billsApi = {
     api.post(`/bills/${id}/pay`, { month, year, amount }),
   unpay: (id: string, month: number, year: number) =>
     api.post(`/bills/${id}/unpay`, { month, year }),
+  record: (id: string, month: number, year: number, amount: number, isPaid: boolean) =>
+    api.post(`/bills/${id}/record`, { month, year, amount, isPaid }),
 }
 
 // Debts

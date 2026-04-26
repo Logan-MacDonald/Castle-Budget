@@ -52,11 +52,17 @@ export async function billRoutes(app: FastifyInstance) {
       orderBy: { dueDay: 'asc' },
     })
 
-    return bills.map(b => ({
-      ...b,
-      payment: b.payments[0] ?? null,
-      isPaid: b.payments[0]?.isPaid ?? false,
-    }))
+    // VARIABLE bills (Orkin, lawn service, anything that only charges
+    // when work is performed) only appear for months where we've
+    // actually recorded a BillPayment. Keeps the list clean for months
+    // with no service, without losing the bill record or its history.
+    return bills
+      .filter(b => b.payPeriod !== 'VARIABLE' || b.payments.length > 0)
+      .map(b => ({
+        ...b,
+        payment: b.payments[0] ?? null,
+        isPaid: b.payments[0]?.isPaid ?? false,
+      }))
   })
 
   // POST /api/bills
@@ -112,7 +118,12 @@ export async function billRoutes(app: FastifyInstance) {
     const bill = await prisma.bill.findUnique({ where: { id } })
     if (!bill) return reply.code(404).send({ error: 'Bill not found' })
 
-    const paidAmount = body.data.amount ?? Number(bill.amount)
+    // Preserve a previously-recorded amount (e.g. from a variable
+    // charge) unless the caller explicitly supplies a new one.
+    const existingPayment = await prisma.billPayment.findUnique({
+      where: { billId_month_year: { billId: id, month: body.data.month, year: body.data.year } },
+    })
+    const paidAmount = body.data.amount ?? Number(existingPayment?.amount ?? bill.amount)
 
     const payment = await prisma.billPayment.upsert({
       where: { billId_month_year: { billId: id, month: body.data.month, year: body.data.year } },
@@ -149,6 +160,54 @@ export async function billRoutes(app: FastifyInstance) {
 
     if (bill.debtId && existing?.isPaid) {
       await applyDebtPayment(bill.debtId, -Number(existing.amount ?? bill.amount))
+    }
+
+    return result
+  })
+
+  // POST /api/bills/:id/record — record a charge for a given month
+  // (used for VARIABLE-payPeriod bills like Orkin: only invoiced when
+  // service is performed). Creates a BillPayment with the given amount;
+  // isPaid lets the caller record either an unpaid or already-paid
+  // charge in one step.
+  app.post('/:id/record', { onRequest: [requireAdmin] }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const body = z.object({
+      month:  z.number().int().min(1).max(12),
+      year:   z.number().int(),
+      amount: z.coerce.number().positive(),
+      isPaid: z.boolean().default(false),
+      notes:  z.string().nullish(),
+    }).safeParse(request.body)
+    if (!body.success) return reply.code(400).send({ error: body.error.flatten() })
+
+    const user = (request.user as any)
+    const bill = await prisma.bill.findUnique({ where: { id } })
+    if (!bill) return reply.code(404).send({ error: 'Bill not found' })
+
+    const result = await prisma.billPayment.upsert({
+      where: { billId_month_year: { billId: id, month: body.data.month, year: body.data.year } },
+      update: {
+        amount: body.data.amount,
+        isPaid: body.data.isPaid,
+        paidAt: body.data.isPaid ? new Date() : null,
+        paidById: body.data.isPaid ? user.sub : null,
+        notes: body.data.notes,
+      },
+      create: {
+        billId: id,
+        month: body.data.month,
+        year:  body.data.year,
+        amount: body.data.amount,
+        isPaid: body.data.isPaid,
+        paidAt: body.data.isPaid ? new Date() : null,
+        paidById: body.data.isPaid ? user.sub : null,
+        notes: body.data.notes,
+      },
+    })
+
+    if (bill.debtId && body.data.isPaid) {
+      await applyDebtPayment(bill.debtId, body.data.amount)
     }
 
     return result
