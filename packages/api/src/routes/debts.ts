@@ -53,7 +53,8 @@ export async function debtRoutes(app: FastifyInstance) {
       where: { isActive: true, isPaidOff: false },
     })).filter(d => !excluded.has(d.type))
 
-    if (debts.length === 0) return { message: 'No active debts', schedule: [] }
+    // No special-case for empty: calculatePayoffStrategy handles []
+    // and returns a well-shaped StrategyResult with empty order/schedule.
 
     const result = calculatePayoffStrategy(
       debts.map(d => ({

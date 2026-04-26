@@ -55,15 +55,22 @@ export function DebtPage() {
   // toggle but content equality is what matters for the strategy fetch.
   const excludedKey = [...excludedTypes].sort().join(',')
 
+  const [loadError, setLoadError] = useState('')
   const load = useCallback(async () => {
     setLoading(true)
-    const [d, s] = await Promise.all([
-      debtsApi.list(),
-      debtsApi.strategy(method, extra, excludedKey ? excludedKey.split(',') : []),
-    ])
-    setDebts(d)
-    setStrategy(s)
-    setLoading(false)
+    setLoadError('')
+    try {
+      const [d, s] = await Promise.all([
+        debtsApi.list(),
+        debtsApi.strategy(method, extra, excludedKey ? excludedKey.split(',') : []),
+      ])
+      setDebts(d)
+      setStrategy(s)
+    } catch (e: any) {
+      setLoadError(e?.message ?? String(e))
+    } finally {
+      setLoading(false)
+    }
   }, [method, extra, excludedKey])
 
   useEffect(() => { load() }, [load])
@@ -109,6 +116,11 @@ export function DebtPage() {
       </div>
 
       <div className="page-body">
+        {loadError && (
+          <div className="login-error" style={{ marginBottom: 16 }}>
+            Couldn't load the debt strategy: {loadError}. <button className="btn btn-ghost btn-sm" onClick={load}>Retry</button>
+          </div>
+        )}
         {/* Summary */}
         <div className="stat-grid" style={{ marginBottom: 24 }}>
           <div className="stat-tile">
