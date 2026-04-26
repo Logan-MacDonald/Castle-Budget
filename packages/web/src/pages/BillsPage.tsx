@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
-import { billsApi, type BillWithPayment, type Bill } from '../lib/api'
-import { Check, ChevronLeft, ChevronRight, Plus, Trash2, X } from 'lucide-react'
+import { billsApi, debtsApi, type BillWithPayment, type Bill, type Debt } from '../lib/api'
+import { Check, ChevronLeft, ChevronRight, Link2, Plus, Trash2, X } from 'lucide-react'
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
 const PAY_PERIODS = ['FIRST','FIFTEENTH','BOTH','MONTHLY','ANNUAL','VARIABLE']
@@ -19,13 +19,19 @@ export function BillsPage() {
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [year, setYear] = useState(now.getFullYear())
   const [bills, setBills] = useState<BillWithPayment[]>([])
+  const [debts, setDebts] = useState<Debt[]>([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
   const [editBill, setEditBill] = useState<Bill | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
-    setBills(await billsApi.monthly(month, year))
+    const [b, d] = await Promise.all([
+      billsApi.monthly(month, year),
+      debtsApi.list(),
+    ])
+    setBills(b)
+    setDebts(d)
     setLoading(false)
   }, [month, year])
 
@@ -120,8 +126,8 @@ export function BillsPage() {
         </div>
       </div>
 
-      {showAdd && <BillModal onClose={() => setShowAdd(false)} onSaved={load} />}
-      {editBill && <BillModal bill={editBill} onClose={() => setEditBill(null)} onSaved={load} />}
+      {showAdd && <BillModal debts={debts} onClose={() => setShowAdd(false)} onSaved={load} />}
+      {editBill && <BillModal bill={editBill} debts={debts} onClose={() => setEditBill(null)} onSaved={load} />}
     </>
   )
 }
@@ -157,11 +163,17 @@ function BillSection({ title, bills, onToggle, onEdit }: {
                 {bill.isPaid && <Check size={14} />}
               </button>
               <div className="bill-info">
-                <div className="bill-name">{bill.name}</div>
+                <div className="bill-name">
+                  {bill.name}
+                  {bill.debtId && (
+                    <Link2 size={11} style={{ marginLeft: 6, opacity: 0.5 }} aria-label="Linked to a debt" />
+                  )}
+                </div>
                 <div className="bill-meta">
                   Due {bill.dueDay}{ordinal(bill.dueDay)}
                   {bill.autoPay && ' · Auto-pay'}
                   {bill.isBusiness && ' · RCS'}
+                  {bill.debtId && ' · Linked to debt'}
                   {bill.isPaid && bill.payment?.paidAt && ` · Paid ${new Date(bill.payment.paidAt).toLocaleDateString()}`}
                 </div>
               </div>
@@ -180,7 +192,7 @@ function BillSection({ title, bills, onToggle, onEdit }: {
   )
 }
 
-function BillModal({ bill, onClose, onSaved }: { bill?: Bill; onClose: () => void; onSaved: () => void }) {
+function BillModal({ bill, debts, onClose, onSaved }: { bill?: Bill; debts: Debt[]; onClose: () => void; onSaved: () => void }) {
   const [form, setForm] = useState<Partial<Bill>>(bill ?? {
     name: '', amount: 0, dueDay: 1, category: 'OTHER', autoPay: false,
     isBusiness: false, payPeriod: 'FIRST', isActive: true,
@@ -271,6 +283,20 @@ function BillModal({ bill, onClose, onSaved }: { bill?: Bill; onClose: () => voi
               <input type="checkbox" checked={form.isBusiness} onChange={e => set('isBusiness', e.target.checked)} />
               Red Castle Systems (Business)
             </label>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Linked debt (optional)</label>
+            <select
+              className="form-input"
+              value={form.debtId ?? ''}
+              onChange={e => set('debtId', e.target.value || null)}
+            >
+              <option value="">— None —</option>
+              {debts.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select>
+            <div style={{ fontSize: '0.7rem', color: 'var(--neutral-500)', marginTop: 4 }}>
+              When linked, marking this bill paid draws the amount from the debt's balance.
+            </div>
           </div>
           <div className="form-group">
             <label className="form-label">Notes (optional)</label>

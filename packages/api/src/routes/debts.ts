@@ -62,42 +62,25 @@ export async function debtRoutes(app: FastifyInstance) {
   })
 
   // POST /api/debts
-  // Side-effect: when minPayment > 0, also create a linked monthly Bill
-  // in the DEBT_PAYMENT category. Toggling that bill paid then draws
-  // down the debt balance (see bills.ts /:id/pay).
+  // No bill is auto-created. The user explicitly links an existing bill
+  // to this debt (or doesn't) via the bill edit modal. That keeps the
+  // bills page from accumulating duplicates of bills the user already
+  // tracks manually.
   app.post('/', { onRequest: [requireAdmin] }, async (request, reply) => {
     const body = debtSchema.safeParse(request.body)
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() })
-    const debt = await prisma.debt.create({ data: body.data })
-    if (Number(debt.minPayment) > 0) {
-      await prisma.bill.create({
-        data: {
-          name:       debt.name,
-          amount:     debt.minPayment,
-          dueDay:     debt.dueDay ?? 1,
-          category:   'DEBT_PAYMENT',
-          payPeriod:  'MONTHLY',
-          autoPay:    false,
-          isActive:   true,
-          isBusiness: debt.isBusiness,
-          debtId:     debt.id,
-        },
-      })
-    }
-    return debt
+    return prisma.debt.create({ data: body.data })
   })
 
-  // PATCH /api/debts/:id — keep the linked Bill in sync.
+  // PATCH /api/debts/:id — if a bill happens to be linked to this debt,
+  // keep its name/amount/dueDay/isBusiness in sync so the user doesn't
+  // edit them in two places. Never creates a bill.
   app.patch('/:id', { onRequest: [requireAdmin] }, async (request, reply) => {
     const body = debtSchema.partial().safeParse(request.body)
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() })
     const { id } = request.params as { id: string }
     const debt = await prisma.debt.update({ where: { id }, data: body.data })
 
-    // Sync the linked bill's user-visible fields. If the debt didn't
-    // have a bill yet (created when minPayment was 0) and now has one,
-    // create it; if minPayment dropped to 0 we leave the bill at $0
-    // rather than orphan its payment history.
     const linked = await prisma.bill.findFirst({ where: { debtId: id, isActive: true } })
     if (linked) {
       await prisma.bill.update({
@@ -107,20 +90,6 @@ export async function debtRoutes(app: FastifyInstance) {
           amount:     debt.minPayment,
           dueDay:     debt.dueDay ?? linked.dueDay,
           isBusiness: debt.isBusiness,
-        },
-      })
-    } else if (Number(debt.minPayment) > 0) {
-      await prisma.bill.create({
-        data: {
-          name:       debt.name,
-          amount:     debt.minPayment,
-          dueDay:     debt.dueDay ?? 1,
-          category:   'DEBT_PAYMENT',
-          payPeriod:  'MONTHLY',
-          autoPay:    false,
-          isActive:   true,
-          isBusiness: debt.isBusiness,
-          debtId:     debt.id,
         },
       })
     }

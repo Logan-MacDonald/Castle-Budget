@@ -15,6 +15,7 @@ const billSchema = z.object({
   isBusiness: z.boolean().default(false),
   payPeriod:  z.nativeEnum(PayPeriod),
   accountId:  z.string().nullish(),
+  debtId:     z.string().nullish(),
   notes:      z.string().nullish(),
 })
 
