@@ -119,8 +119,11 @@ export const billsApi = {
 // Debts
 export const debtsApi = {
   list: () => api.get<Debt[]>('/debts'),
-  strategy: (method: 'snowball' | 'avalanche', extra: number) =>
-    api.get<StrategyResult>(`/debts/strategy?method=${method}&extra=${extra}`),
+  strategy: (method: 'snowball' | 'avalanche', extra: number, excludeTypes: string[] = []) => {
+    const params = new URLSearchParams({ method, extra: String(extra) })
+    if (excludeTypes.length) params.set('excludeTypes', excludeTypes.join(','))
+    return api.get<StrategyResult>(`/debts/strategy?${params.toString()}`)
+  },
   create: (data: Partial<Debt>) => api.post<Debt>('/debts', data),
   update: (id: string, data: Partial<Debt>) => api.patch<Debt>(`/debts/${id}`, data),
   payment: (id: string, data: DebtPaymentInput) =>

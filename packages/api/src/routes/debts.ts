@@ -31,18 +31,27 @@ export async function debtRoutes(app: FastifyInstance) {
     })
   })
 
-  // GET /api/debts/strategy?method=snowball&extra=200
+  // GET /api/debts/strategy?method=snowball&extra=200&excludeTypes=MORTGAGE,AUTO_LOAN
+  // excludeTypes lets the caller drop whole categories from the
+  // simulation (e.g. don't stretch the snowball plan over a 30-year
+  // mortgage). Excluded debts still exist in the ledger; they're just
+  // not in this run.
   app.get('/strategy', async (request, reply) => {
     const query = z.object({
       method: z.enum(['snowball', 'avalanche']).default('snowball'),
       extra:  z.coerce.number().nonnegative().default(0),
+      excludeTypes: z.string().optional(),
     }).safeParse(request.query)
 
     if (!query.success) return reply.code(400).send({ error: query.error.flatten() })
 
-    const debts = await prisma.debt.findMany({
+    const excluded = new Set(
+      (query.data.excludeTypes ?? '').split(',').map(s => s.trim()).filter(Boolean)
+    )
+
+    const debts = (await prisma.debt.findMany({
       where: { isActive: true, isPaidOff: false },
-    })
+    })).filter(d => !excluded.has(d.type))
 
     if (debts.length === 0) return { message: 'No active debts', schedule: [] }
 

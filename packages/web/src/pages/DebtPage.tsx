@@ -28,20 +28,43 @@ export function DebtPage() {
   const [strategy, setStrategy] = useState<StrategyResult | null>(null)
   const [method, setMethod] = useState<'snowball' | 'avalanche'>('snowball')
   const [extra, setExtra] = useState(0)
+  const [excludedTypes, setExcludedTypes] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem('castle-budget:excluded-debt-types')
+      return raw ? new Set<string>(JSON.parse(raw)) : new Set<string>()
+    } catch { return new Set<string>() }
+  })
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
   const [editDebt, setEditDebt] = useState<Debt | null>(null)
+
+  useEffect(() => {
+    try { localStorage.setItem('castle-budget:excluded-debt-types', JSON.stringify([...excludedTypes])) }
+    catch { /* localStorage may be unavailable; skip persisting */ }
+  }, [excludedTypes])
+
+  function toggleExcluded(type: string) {
+    setExcludedTypes(prev => {
+      const next = new Set(prev)
+      if (next.has(type)) next.delete(type); else next.add(type)
+      return next
+    })
+  }
+
+  // Stable string for useCallback deps — Set identity changes on every
+  // toggle but content equality is what matters for the strategy fetch.
+  const excludedKey = [...excludedTypes].sort().join(',')
 
   const load = useCallback(async () => {
     setLoading(true)
     const [d, s] = await Promise.all([
       debtsApi.list(),
-      debtsApi.strategy(method, extra),
+      debtsApi.strategy(method, extra, excludedKey ? excludedKey.split(',') : []),
     ])
     setDebts(d)
     setStrategy(s)
     setLoading(false)
-  }, [method, extra])
+  }, [method, extra, excludedKey])
 
   useEffect(() => { load() }, [load])
 
@@ -157,6 +180,47 @@ export function DebtPage() {
               ? '❄️ Snowball: Pay off smallest balances first. Faster wins, great for motivation.'
               : '🌊 Avalanche: Pay off highest interest rates first. Mathematically optimal, saves more money.'}
           </div>
+
+          {/* Type filter — exclude whole categories from the simulation
+              (e.g. don't stretch the plan over a 30-year mortgage). */}
+          {(() => {
+            const presentTypes = DEBT_TYPE_ORDER.filter(t => debts.some(d => d.type === t))
+            if (presentTypes.length <= 1) return null
+            return (
+              <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--neutral-200)' }}>
+                <div className="form-label" style={{ marginBottom: 8 }}>Include in plan</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {presentTypes.map(t => {
+                    const on = !excludedTypes.has(t)
+                    return (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => toggleExcluded(t)}
+                        style={{
+                          fontSize: '0.78rem',
+                          padding: '6px 12px',
+                          borderRadius: 999,
+                          border: `1px solid ${on ? 'var(--castle-500)' : 'var(--neutral-300)'}`,
+                          background: on ? 'var(--castle-500)' : 'transparent',
+                          color: on ? '#fff' : 'var(--neutral-500)',
+                          cursor: 'pointer',
+                          textDecoration: on ? 'none' : 'line-through',
+                          opacity: on ? 1 : 0.7,
+                        }}
+                        aria-pressed={on}
+                      >
+                        {DEBT_TYPE_LABEL[t] ?? t}
+                      </button>
+                    )
+                  })}
+                </div>
+                <div style={{ marginTop: 6, fontSize: '0.72rem', color: 'var(--neutral-500)' }}>
+                  Click a type to remove it from the snowball/avalanche plan. Excluded debts still show on the page.
+                </div>
+              </div>
+            )
+          })()}
         </div>
 
         {/* Payoff order */}
