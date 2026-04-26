@@ -167,7 +167,7 @@ export type AuthUser = { sub: string; name: string; email: string; role: 'ADMIN'
 export type Bill = {
   id: string; name: string; amount: number; dueDay: number
   category: string; autoPay: boolean; isActive: boolean
-  isBusiness: boolean; payPeriod: string; accountId?: string; notes?: string
+  isBusiness: boolean; payPeriod: string; accountId?: string; debtId?: string; notes?: string
 }
 
 export type BillWithPayment = Bill & {
@@ -198,7 +198,7 @@ export type IncomeSource = {
 }
 
 export type SavingsGoal = {
-  id: string; name: string; targetAmount: number; currentAmount: number
+  id: string; name: string; targetAmount: number; startingBalance: number; currentAmount: number
   targetDate?: string; isComplete: boolean; accountId?: string; notes?: string
 }
 

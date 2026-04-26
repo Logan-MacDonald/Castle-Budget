@@ -5,12 +5,13 @@ import { Decimal } from 'decimal.js'
 import { requireAdmin } from '../lib/auth-hooks'
 
 const savingsSchema = z.object({
-  name:          z.string().min(1),
-  targetAmount:  z.coerce.number().nonnegative(),
-  currentAmount: z.coerce.number().nonnegative().default(0),
-  targetDate:    z.string().datetime().optional(),
-  accountId:     z.string().optional(),
-  notes:         z.string().optional(),
+  name:            z.string().min(1),
+  targetAmount:    z.coerce.number().nonnegative(),
+  startingBalance: z.coerce.number().nonnegative().default(0),
+  currentAmount:   z.coerce.number().nonnegative().optional(),
+  targetDate:      z.string().datetime().nullish(),
+  accountId:       z.string().nullish(),
+  notes:           z.string().nullish(),
 })
 
 export async function savingsRoutes(app: FastifyInstance) {
@@ -19,7 +20,13 @@ export async function savingsRoutes(app: FastifyInstance) {
   app.post('/', { onRequest: [requireAdmin] }, async (request, reply) => {
     const body = savingsSchema.safeParse(request.body)
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() })
-    return prisma.savingsGoal.create({ data: body.data })
+    // currentAmount defaults to startingBalance — a new goal where the
+    // user already has $X is at $X today, not $0.
+    const data = {
+      ...body.data,
+      currentAmount: body.data.currentAmount ?? body.data.startingBalance,
+    }
+    return prisma.savingsGoal.create({ data })
   })
 
   app.patch('/:id', { onRequest: [requireAdmin] }, async (request, reply) => {

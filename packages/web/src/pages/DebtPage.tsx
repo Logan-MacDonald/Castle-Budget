@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { debtsApi, type Debt, type StrategyResult } from '../lib/api'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
-import { Plus, X, TrendingDown, Zap } from 'lucide-react'
+import { Plus, Trash2, X, TrendingDown, Zap } from 'lucide-react'
 
 function fmt(n: number, decimals = 0) {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: decimals })
@@ -251,6 +251,7 @@ function DebtModal({ debt, onClose, onSaved }: { debt?: Debt; onClose: () => voi
     currentBalance: 0, interestRate: 0, minPayment: 0,
   })
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   function set(k: keyof Debt, v: unknown) { setForm(f => ({ ...f, [k]: v })) }
 
@@ -264,6 +265,16 @@ function DebtModal({ debt, onClose, onSaved }: { debt?: Debt; onClose: () => voi
       }
       onSaved(); onClose()
     } finally { setSaving(false) }
+  }
+
+  async function handleDelete() {
+    if (!debt) return
+    if (!confirm(`Delete debt "${debt.name}"? Any linked monthly bill will also be removed.`)) return
+    setDeleting(true)
+    try {
+      await debtsApi.delete(debt.id)
+      onSaved(); onClose()
+    } finally { setDeleting(false) }
   }
 
   return (
@@ -311,11 +322,18 @@ function DebtModal({ debt, onClose, onSaved }: { debt?: Debt; onClose: () => voi
             <input className="form-input" value={form.notes ?? ''} onChange={e => set('notes', e.target.value)} />
           </div>
         </div>
-        <div className="modal-footer">
-          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={saving || !form.name}>
-            {saving ? 'Saving…' : debt ? 'Update' : 'Add Debt'}
-          </button>
+        <div className="modal-footer" style={{ justifyContent: 'space-between' }}>
+          {debt ? (
+            <button className="btn btn-ghost" style={{ color: 'var(--red-500, #c0392b)' }} onClick={handleDelete} disabled={deleting || saving}>
+              <Trash2 size={14} /> {deleting ? 'Deleting…' : 'Delete'}
+            </button>
+          ) : <span />}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+            <button className="btn btn-primary" onClick={handleSave} disabled={saving || !form.name}>
+              {saving ? 'Saving…' : debt ? 'Update' : 'Add Debt'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

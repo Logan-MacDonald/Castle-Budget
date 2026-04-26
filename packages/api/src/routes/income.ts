@@ -11,7 +11,7 @@ const incomeSchema = z.object({
   payPeriod:  z.nativeEnum(PayPeriod),
   isActive:   z.boolean().default(true),
   isBusiness: z.boolean().default(false),
-  notes:      z.string().optional(),
+  notes:      z.string().nullish(),
 })
 
 export async function incomeRoutes(app: FastifyInstance) {

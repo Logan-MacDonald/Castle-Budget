@@ -6,12 +6,12 @@ import { requireAdmin } from '../lib/auth-hooks'
 
 const accountSchema = z.object({
   name:        z.string().min(1),
-  institution: z.string().optional(),
+  institution: z.string().nullish(),
   type:        z.nativeEnum(AccountType),
   balance:     z.coerce.number().default(0),
   isActive:    z.boolean().default(true),
   isBusiness:  z.boolean().default(false),
-  notes:       z.string().optional(),
+  notes:       z.string().nullish(),
 })
 
 export async function accountRoutes(app: FastifyInstance) {

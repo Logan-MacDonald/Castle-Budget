@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { billsApi, type BillWithPayment, type Bill } from '../lib/api'
-import { Check, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, Plus, Trash2, X } from 'lucide-react'
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
 const PAY_PERIODS = ['FIRST','FIFTEENTH','BOTH','MONTHLY','ANNUAL','VARIABLE']
@@ -21,6 +21,7 @@ export function BillsPage() {
   const [bills, setBills] = useState<BillWithPayment[]>([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
+  const [editBill, setEditBill] = useState<Bill | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -108,23 +109,25 @@ export function BillsPage() {
             </div>
           ) : (
             <>
-              <BillSection title="1st Paycheck Bills" bills={firstBills} onToggle={togglePaid} />
-              <BillSection title="15th Paycheck Bills" bills={fifteenthBills} onToggle={togglePaid} />
-              {otherBills.length > 0 && <BillSection title="Other" bills={otherBills} onToggle={togglePaid} />}
+              <BillSection title="1st Paycheck Bills" bills={firstBills} onToggle={togglePaid} onEdit={setEditBill} />
+              <BillSection title="15th Paycheck Bills" bills={fifteenthBills} onToggle={togglePaid} onEdit={setEditBill} />
+              {otherBills.length > 0 && <BillSection title="Other" bills={otherBills} onToggle={togglePaid} onEdit={setEditBill} />}
             </>
           )}
         </div>
       </div>
 
-      {showAdd && <AddBillModal onClose={() => setShowAdd(false)} onSaved={load} />}
+      {showAdd && <BillModal onClose={() => setShowAdd(false)} onSaved={load} />}
+      {editBill && <BillModal bill={editBill} onClose={() => setEditBill(null)} onSaved={load} />}
     </>
   )
 }
 
-function BillSection({ title, bills, onToggle }: {
+function BillSection({ title, bills, onToggle, onEdit }: {
   title: string
   bills: BillWithPayment[]
   onToggle: (b: BillWithPayment) => void
+  onEdit: (b: Bill) => void
 }) {
   if (bills.length === 0) return null
   const total = bills.reduce((s, b) => s + b.amount, 0)
@@ -138,8 +141,16 @@ function BillSection({ title, bills, onToggle }: {
       <div className="card">
         <div className="bill-list" style={{ padding: '8px 0' }}>
           {bills.sort((a,b) => a.dueDay - b.dueDay).map(bill => (
-            <div key={bill.id} className={`bill-row${bill.isPaid ? ' paid' : ''}`}>
-              <button className={`check-btn${bill.isPaid ? ' paid' : ''}`} onClick={() => onToggle(bill)}>
+            <div
+              key={bill.id}
+              className={`bill-row${bill.isPaid ? ' paid' : ''}`}
+              onClick={() => onEdit(bill)}
+              style={{ cursor: 'pointer' }}
+            >
+              <button
+                className={`check-btn${bill.isPaid ? ' paid' : ''}`}
+                onClick={e => { e.stopPropagation(); onToggle(bill) }}
+              >
                 {bill.isPaid && <Check size={14} />}
               </button>
               <div className="bill-info">
@@ -166,12 +177,13 @@ function BillSection({ title, bills, onToggle }: {
   )
 }
 
-function AddBillModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [form, setForm] = useState<Partial<Bill>>({
+function BillModal({ bill, onClose, onSaved }: { bill?: Bill; onClose: () => void; onSaved: () => void }) {
+  const [form, setForm] = useState<Partial<Bill>>(bill ?? {
     name: '', amount: 0, dueDay: 1, category: 'OTHER', autoPay: false,
     isBusiness: false, payPeriod: 'FIRST', isActive: true,
   })
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   function set(key: keyof Bill, val: unknown) {
     setForm(f => ({ ...f, [key]: val }))
@@ -180,7 +192,8 @@ function AddBillModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
   async function handleSave() {
     setSaving(true)
     try {
-      await billsApi.create(form)
+      if (bill) await billsApi.update(bill.id, form)
+      else await billsApi.create(form)
       onSaved()
       onClose()
     } finally {
@@ -188,11 +201,24 @@ function AddBillModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
     }
   }
 
+  async function handleDelete() {
+    if (!bill) return
+    if (!confirm(`Delete bill "${bill.name}"? This will also remove its payment history.`)) return
+    setDeleting(true)
+    try {
+      await billsApi.delete(bill.id)
+      onSaved()
+      onClose()
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <h2 className="modal-title">Add Bill</h2>
+          <h2 className="modal-title">{bill ? 'Edit Bill' : 'Add Bill'}</h2>
           <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={14} /></button>
         </div>
         <div className="modal-body">
@@ -239,11 +265,18 @@ function AddBillModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
             <input className="form-input" value={form.notes ?? ''} onChange={e => set('notes', e.target.value)} placeholder="Any notes…" />
           </div>
         </div>
-        <div className="modal-footer">
-          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={saving || !form.name}>
-            {saving ? 'Saving…' : 'Add Bill'}
-          </button>
+        <div className="modal-footer" style={{ justifyContent: 'space-between' }}>
+          {bill ? (
+            <button className="btn btn-ghost" style={{ color: 'var(--red-500, #c0392b)' }} onClick={handleDelete} disabled={deleting || saving}>
+              <Trash2 size={14} /> {deleting ? 'Deleting…' : 'Delete'}
+            </button>
+          ) : <span />}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+            <button className="btn btn-primary" onClick={handleSave} disabled={saving || !form.name}>
+              {saving ? 'Saving…' : bill ? 'Update' : 'Add Bill'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

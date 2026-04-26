@@ -9,9 +9,9 @@ const txSchema = z.object({
   description: z.string().min(1),
   date:        z.string().datetime(),
   category:    z.nativeEnum(TransactionCategory),
-  accountId:   z.string().optional(),
+  accountId:   z.string().nullish(),
   isBusiness:  z.boolean().default(false),
-  notes:       z.string().optional(),
+  notes:       z.string().nullish(),
 })
 
 export async function transactionRoutes(app: FastifyInstance) {
@@ -19,7 +19,7 @@ export async function transactionRoutes(app: FastifyInstance) {
     const query = z.object({
       month:     z.coerce.number().int().optional(),
       year:      z.coerce.number().int().optional(),
-      accountId: z.string().optional(),
+      accountId: z.string().nullish(),
       limit:     z.coerce.number().int().default(100),
     }).parse(request.query)
 

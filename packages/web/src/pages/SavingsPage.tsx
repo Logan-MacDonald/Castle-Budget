@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { savingsApi, type SavingsGoal } from '../lib/api'
-import { Plus, X } from 'lucide-react'
+import { Pencil, Plus, Trash2, X } from 'lucide-react'
 
 function fmt(n: number) { return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }) }
 
@@ -8,6 +8,7 @@ export function SavingsPage() {
   const [goals, setGoals] = useState<SavingsGoal[]>([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
+  const [editGoal, setEditGoal] = useState<SavingsGoal | null>(null)
   const [contribute, setContribute] = useState<SavingsGoal | null>(null)
   const [amount, setAmount] = useState('')
 
@@ -71,7 +72,10 @@ export function SavingsPage() {
                         </div>
                       )}
                     </div>
-                    {g.isComplete && <span className="badge badge-green">Complete</span>}
+                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                      {g.isComplete && <span className="badge badge-green">Complete</span>}
+                      <button className="btn btn-ghost btn-sm" onClick={() => setEditGoal(g)} title="Edit goal"><Pencil size={12} /></button>
+                    </div>
                   </div>
 
                   <div style={{ marginBottom: 12 }}>
@@ -98,6 +102,7 @@ export function SavingsPage() {
       </div>
 
       {showAdd && <SavingsModal onClose={() => setShowAdd(false)} onSaved={load} />}
+      {editGoal && <SavingsModal goal={editGoal} onClose={() => setEditGoal(null)} onSaved={load} />}
 
       {contribute && (
         <div className="modal-overlay" onClick={() => setContribute(null)}>
@@ -123,21 +128,33 @@ export function SavingsPage() {
   )
 }
 
-function SavingsModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [form, setForm] = useState<Partial<SavingsGoal>>({ name: '', targetAmount: 0, currentAmount: 0 })
+function SavingsModal({ goal, onClose, onSaved }: { goal?: SavingsGoal; onClose: () => void; onSaved: () => void }) {
+  const [form, setForm] = useState<Partial<SavingsGoal>>(goal ?? { name: '', targetAmount: 0, startingBalance: 0, currentAmount: 0 })
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   async function handleSave() {
     setSaving(true)
-    try { await savingsApi.create(form); onSaved(); onClose() }
-    finally { setSaving(false) }
+    try {
+      if (goal) await savingsApi.update(goal.id, form)
+      else await savingsApi.create(form)
+      onSaved(); onClose()
+    } finally { setSaving(false) }
+  }
+
+  async function handleDelete() {
+    if (!goal) return
+    if (!confirm(`Delete savings goal "${goal.name}"? Contributions history will be lost.`)) return
+    setDeleting(true)
+    try { await savingsApi.delete(goal.id); onSaved(); onClose() }
+    finally { setDeleting(false) }
   }
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <h2 className="modal-title">New Savings Goal</h2>
+          <h2 className="modal-title">{goal ? 'Edit Savings Goal' : 'New Savings Goal'}</h2>
           <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={14} /></button>
         </div>
         <div className="modal-body">
@@ -151,10 +168,16 @@ function SavingsModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
               <input className="form-input" type="number" value={form.targetAmount} onChange={e => setForm(f => ({...f, targetAmount: parseFloat(e.target.value)}))} />
             </div>
             <div className="form-group">
+              <label className="form-label">{goal ? 'Starting Balance' : 'Starting Balance'}</label>
+              <input className="form-input" type="number" value={form.startingBalance ?? 0} onChange={e => setForm(f => ({...f, startingBalance: parseFloat(e.target.value)}))} placeholder="What you have today" />
+            </div>
+          </div>
+          {goal && (
+            <div className="form-group">
               <label className="form-label">Current Amount</label>
               <input className="form-input" type="number" value={form.currentAmount} onChange={e => setForm(f => ({...f, currentAmount: parseFloat(e.target.value)}))} />
             </div>
-          </div>
+          )}
           <div className="form-group">
             <label className="form-label">Target Date (optional)</label>
             <input className="form-input" type="date" value={form.targetDate?.split('T')[0] ?? ''} onChange={e => setForm(f => ({...f, targetDate: new Date(e.target.value).toISOString()}))} />
@@ -164,11 +187,18 @@ function SavingsModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
             <input className="form-input" value={form.notes ?? ''} onChange={e => setForm(f => ({...f, notes: e.target.value}))} />
           </div>
         </div>
-        <div className="modal-footer">
-          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-gold" onClick={handleSave} disabled={saving || !form.name}>
-            {saving ? 'Saving…' : 'Create Goal'}
-          </button>
+        <div className="modal-footer" style={{ justifyContent: 'space-between' }}>
+          {goal ? (
+            <button className="btn btn-ghost" style={{ color: 'var(--red-500, #c0392b)' }} onClick={handleDelete} disabled={deleting || saving}>
+              <Trash2 size={14} /> {deleting ? 'Deleting…' : 'Delete'}
+            </button>
+          ) : <span />}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+            <button className="btn btn-gold" onClick={handleSave} disabled={saving || !form.name}>
+              {saving ? 'Saving…' : goal ? 'Update' : 'Create Goal'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
