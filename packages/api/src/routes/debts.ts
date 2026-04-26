@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { Decimal } from 'decimal.js'
 import { prisma } from '../lib/prisma'
 import { DebtType } from '@prisma/client'
-import { calculatePayoffStrategy } from '../lib/debt-strategy'
+import { calculatePayoffStrategy, MAX_MONTHS } from '../lib/debt-strategy'
 import { requireAdmin } from '../lib/auth-hooks'
 
 const debtSchema = z.object({
@@ -49,33 +49,24 @@ export async function debtRoutes(app: FastifyInstance) {
       (query.data.excludeTypes ?? '').split(',').map(s => s.trim()).filter(Boolean)
     )
 
+    // Pull each debt's linked Bill alongside it. The bill's `amount`
+    // (when present) is the actual monthly contribution the user
+    // makes — typically what they've put on auto-pay. It can be more
+    // than `debt.minPayment`, so using it makes the simulation match
+    // reality.
     const debts = (await prisma.debt.findMany({
       where: { isActive: true, isPaidOff: false },
+      include: { bill: true },
     })).filter(d => !excluded.has(d.type))
 
     // No special-case for empty: calculatePayoffStrategy handles []
     // and returns a well-shaped StrategyResult with empty order/schedule.
 
-    // Detect debts whose monthly interest exceeds their minimum
-    // payment. Under snowball these are left on bare minimums until
-    // their turn, so they compound exponentially before any extra
-    // payment lands — the chart shows a rising curve and the simulation
-    // hits MAX_MONTHS. Surface this so the UI can warn instead of
-    // looking glitched.
-    const warnings: string[] = []
-    let anyGrowing = false
-    for (const d of debts) {
-      const bal  = Number(d.currentBalance)
-      const rate = Number(d.interestRate)
-      const min  = Number(d.minPayment)
-      if (min <= 0 || bal <= 0) continue
-      const monthlyInterest = bal * rate / 12
-      if (min < monthlyInterest) {
-        anyGrowing = true
-        warnings.push(
-          `${d.name}: minimum payment ($${Math.round(min)}) is below its monthly interest (~$${Math.round(monthlyInterest)}). Balance will grow until extra payment lands here.`
-        )
-      }
+    // Effective monthly contribution per debt: linked bill's amount
+    // wins over debt.minPayment when present and active.
+    const effectiveMin = (d: typeof debts[number]) => {
+      const linked = d.bill?.isActive ? d.bill : null
+      return linked ? linked.amount.toString() : d.minPayment.toString()
     }
 
     const result = calculatePayoffStrategy(
@@ -84,17 +75,40 @@ export async function debtRoutes(app: FastifyInstance) {
         name: d.name,
         currentBalance: d.currentBalance.toString(),
         interestRate: d.interestRate.toString(),
-        minPayment: d.minPayment.toString(),
+        minPayment: effectiveMin(d),
       })),
       query.data.extra,
       query.data.method
     )
 
-    // If snowball is leaving a high-rate debt to grow, suggest
-    // avalanche — it would target the highest rate first and head
-    // off the runaway.
+    // Warnings come from the simulation OUTCOME, not the initial-state
+    // check. A debt with min < interest is only a problem if the rest
+    // of the plan can't bail it out via rollover. If the sim hit
+    // MAX_MONTHS, any debt whose payoff month is at the cap never
+    // actually paid off — that's the runaway case worth surfacing.
+    const warnings: string[] = []
+    let anyRunaway = false
+    if (result.totalMonths >= MAX_MONTHS) {
+      const debtById = new Map(debts.map(d => [d.id, d]))
+      for (const o of result.order) {
+        if (o.payoffMonth < MAX_MONTHS) continue
+        anyRunaway = true
+        const d = debtById.get(o.id)
+        if (!d) continue
+        const bal  = Number(d.currentBalance)
+        const rate = Number(d.interestRate)
+        const min  = Number(effectiveMin(d))
+        const monthlyInterest = bal * rate / 12
+        warnings.push(
+          `${d.name}: payment of $${Math.round(min)}/mo is below its monthly interest (~$${Math.round(monthlyInterest)}). With this filter and method, the balance grows faster than it's paid down.`
+        )
+      }
+    }
+
+    // If snowball is producing runaway debts, avalanche (highest rate
+    // first) would head them off — surface the suggestion.
     const methodSuggestion =
-      query.data.method === 'snowball' && anyGrowing ? 'avalanche' : undefined
+      query.data.method === 'snowball' && anyRunaway ? 'avalanche' : undefined
 
     return { ...result, warnings, methodSuggestion }
   })

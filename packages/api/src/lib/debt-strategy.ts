@@ -39,6 +39,7 @@ type InternalDebt = {
 
 const ZERO = new Decimal(0)
 const TWELVE = new Decimal(12)
+export const MAX_MONTHS = 600
 
 export function calculatePayoffStrategy(
   debts: DebtInput[],
@@ -77,7 +78,6 @@ export function calculatePayoffStrategy(
   const startDate = new Date()
   let totalInterest = ZERO
   let month = 0
-  const MAX_MONTHS = 600
 
   while (working.some(d => d.balance.gt(0)) && month < MAX_MONTHS) {
     month++
