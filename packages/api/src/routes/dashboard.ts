@@ -17,15 +17,24 @@ export async function dashboardRoutes(app: FastifyInstance) {
     const year = now.getFullYear()
 
     // ── Bills this month ──
-    const bills = await prisma.bill.findMany({
+    const allBills = await prisma.bill.findMany({
       where: { isActive: true },
       include: { payments: { where: { month, year } } },
     })
 
+    // VARIABLE bills (Orkin, lawn service) only belong in this month's
+    // numbers when they actually have a charge — same rule the Bills
+    // page uses.
+    const bills = allBills.filter(b => b.payPeriod !== 'VARIABLE' || b.payments.length > 0)
+
+    // autoPay only counts as paid once the due day has passed in this
+    // month — matches the Bills page so the dashboard and the Bills view
+    // never disagree about whether something has been auto-drafted yet.
+    const todayDate = now.getDate()
+    const isEffectivelyPaid = (b: typeof bills[number]) =>
+      !!b.payments[0]?.isPaid || (b.autoPay && todayDate >= b.dueDay)
+
     const totalBills = sum(bills, b => b.amount)
-    // autoPay bills count as paid for cash-flow purposes — they're already
-    // deducted from available funds without needing an explicit payment.
-    const isEffectivelyPaid = (b: typeof bills[number]) => b.autoPay || !!b.payments[0]?.isPaid
     const paidBills = bills.filter(isEffectivelyPaid)
     const unpaidBills = bills.filter(b => !isEffectivelyPaid(b))
     const totalPaid = sum(paidBills, b => b.amount)
@@ -111,7 +120,12 @@ export async function dashboardRoutes(app: FastifyInstance) {
         goalCount: savingsGoals.length,
       },
       cashFlow: {
-        monthly: monthlyIncome.minus(totalBills).minus(totalMinPayments).toFixed(2),
+        // income − totalBills only. Debt minimum payments are not
+        // subtracted separately because debt-linked bills (the recurring
+        // monthly payments for those debts) are already counted in
+        // totalBills. Subtracting totalMinPayments again would double-
+        // count any debt that's tracked as both a Debt and a Bill.
+        monthly: monthlyIncome.minus(totalBills).toFixed(2),
       },
       accounts: accounts.map(a => ({ ...a, balance: a.balance.toString() })),
     }
