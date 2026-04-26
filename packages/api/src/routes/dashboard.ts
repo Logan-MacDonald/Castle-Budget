@@ -23,8 +23,11 @@ export async function dashboardRoutes(app: FastifyInstance) {
     })
 
     const totalBills = sum(bills, b => b.amount)
-    const paidBills = bills.filter(b => b.payments[0]?.isPaid)
-    const unpaidBills = bills.filter(b => !b.payments[0]?.isPaid)
+    // autoPay bills count as paid for cash-flow purposes — they're already
+    // deducted from available funds without needing an explicit payment.
+    const isEffectivelyPaid = (b: typeof bills[number]) => b.autoPay || !!b.payments[0]?.isPaid
+    const paidBills = bills.filter(isEffectivelyPaid)
+    const unpaidBills = bills.filter(b => !isEffectivelyPaid(b))
     const totalPaid = sum(paidBills, b => b.amount)
     const totalUnpaid = sum(unpaidBills, b => b.amount)
 

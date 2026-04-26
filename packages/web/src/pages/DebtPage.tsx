@@ -252,11 +252,12 @@ function DebtModal({ debt, onClose, onSaved }: { debt?: Debt; onClose: () => voi
   })
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [error, setError] = useState('')
 
   function set(k: keyof Debt, v: unknown) { setForm(f => ({ ...f, [k]: v })) }
 
   async function handleSave() {
-    setSaving(true)
+    setSaving(true); setError('')
     try {
       if (debt) {
         await debtsApi.update(debt.id, form)
@@ -264,16 +265,20 @@ function DebtModal({ debt, onClose, onSaved }: { debt?: Debt; onClose: () => voi
         await debtsApi.create(form)
       }
       onSaved(); onClose()
+    } catch (e: any) {
+      setError(`Save failed: ${e?.message ?? e}`)
     } finally { setSaving(false) }
   }
 
   async function handleDelete() {
     if (!debt) return
     if (!confirm(`Delete debt "${debt.name}"? Any linked monthly bill will also be removed.`)) return
-    setDeleting(true)
+    setDeleting(true); setError('')
     try {
       await debtsApi.delete(debt.id)
       onSaved(); onClose()
+    } catch (e: any) {
+      setError(`Delete failed: ${e?.message ?? e}`)
     } finally { setDeleting(false) }
   }
 
@@ -285,6 +290,7 @@ function DebtModal({ debt, onClose, onSaved }: { debt?: Debt; onClose: () => voi
           <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={14} /></button>
         </div>
         <div className="modal-body">
+          {error && <div className="login-error" style={{ marginBottom: 12 }}>{error}</div>}
           <div className="form-grid">
             <div className="form-group" style={{ gridColumn: '1/-1' }}>
               <label className="form-label">Name</label>

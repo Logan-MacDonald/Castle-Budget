@@ -56,7 +56,10 @@ export function BillsPage() {
   const fifteenthBills = bills.filter(b => b.payPeriod === 'FIFTEENTH')
 
   const totalBills = bills.reduce((s, b) => s + b.amount, 0)
-  const totalPaid  = bills.filter(b => b.isPaid).reduce((s, b) => s + b.amount, 0)
+  // autoPay bills count as paid for the running total — they're already
+  // deducted from available funds. The check button still works on them
+  // (in case auto-pay failed and a manual payment was made).
+  const totalPaid  = bills.filter(b => b.autoPay || b.isPaid).reduce((s, b) => s + b.amount, 0)
 
   return (
     <>
@@ -92,10 +95,10 @@ export function BillsPage() {
           <div style={{ flex: 1 }} />
           <div style={{ minWidth: 160 }}>
             <div style={{ fontSize: '0.72rem', color: 'var(--castle-300)', marginBottom: 6 }}>
-              {bills.filter(b => b.isPaid).length} of {bills.length} paid
+              {bills.filter(b => b.autoPay || b.isPaid).length} of {bills.length} paid
             </div>
             <div className="progress-track" style={{ height: 6, background: 'rgba(255,255,255,.1)' }}>
-              <div className="progress-fill green" style={{ width: `${bills.length ? (bills.filter(b=>b.isPaid).length/bills.length)*100 : 0}%` }} />
+              <div className="progress-fill green" style={{ width: `${bills.length ? (bills.filter(b=> b.autoPay || b.isPaid).length/bills.length)*100 : 0}%` }} />
             </div>
           </div>
         </div>
@@ -164,7 +167,7 @@ function BillSection({ title, bills, onToggle, onEdit }: {
               </div>
               <div className="bill-amount">{fmt(bill.amount)}</div>
               {bill.autoPay
-                ? <span className="badge badge-blue">Auto</span>
+                ? <span className="badge badge-blue">Auto-paid</span>
                 : bill.isPaid
                 ? <span className="badge badge-green">✓ Paid</span>
                 : <span className="badge badge-gold">Due</span>
@@ -189,13 +192,18 @@ function BillModal({ bill, onClose, onSaved }: { bill?: Bill; onClose: () => voi
     setForm(f => ({ ...f, [key]: val }))
   }
 
+  const [error, setError] = useState('')
+
   async function handleSave() {
     setSaving(true)
+    setError('')
     try {
       if (bill) await billsApi.update(bill.id, form)
       else await billsApi.create(form)
       onSaved()
       onClose()
+    } catch (e: any) {
+      setError(`Save failed: ${e?.message ?? e}`)
     } finally {
       setSaving(false)
     }
@@ -205,10 +213,13 @@ function BillModal({ bill, onClose, onSaved }: { bill?: Bill; onClose: () => voi
     if (!bill) return
     if (!confirm(`Delete bill "${bill.name}"? This will also remove its payment history.`)) return
     setDeleting(true)
+    setError('')
     try {
       await billsApi.delete(bill.id)
       onSaved()
       onClose()
+    } catch (e: any) {
+      setError(`Delete failed: ${e?.message ?? e}`)
     } finally {
       setDeleting(false)
     }
@@ -222,6 +233,7 @@ function BillModal({ bill, onClose, onSaved }: { bill?: Bill; onClose: () => voi
           <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={14} /></button>
         </div>
         <div className="modal-body">
+          {error && <div className="login-error" style={{ marginBottom: 12 }}>{error}</div>}
           <div className="form-group">
             <label className="form-label">Bill Name</label>
             <input className="form-input" value={form.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Netflix" />

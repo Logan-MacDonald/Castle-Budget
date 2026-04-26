@@ -132,21 +132,25 @@ function SavingsModal({ goal, onClose, onSaved }: { goal?: SavingsGoal; onClose:
   const [form, setForm] = useState<Partial<SavingsGoal>>(goal ?? { name: '', targetAmount: 0, startingBalance: 0, currentAmount: 0 })
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [error, setError] = useState('')
 
   async function handleSave() {
-    setSaving(true)
+    setSaving(true); setError('')
     try {
       if (goal) await savingsApi.update(goal.id, form)
       else await savingsApi.create(form)
       onSaved(); onClose()
+    } catch (e: any) {
+      setError(`Save failed: ${e?.message ?? e}`)
     } finally { setSaving(false) }
   }
 
   async function handleDelete() {
     if (!goal) return
     if (!confirm(`Delete savings goal "${goal.name}"? Contributions history will be lost.`)) return
-    setDeleting(true)
+    setDeleting(true); setError('')
     try { await savingsApi.delete(goal.id); onSaved(); onClose() }
+    catch (e: any) { setError(`Delete failed: ${e?.message ?? e}`) }
     finally { setDeleting(false) }
   }
 
@@ -158,6 +162,7 @@ function SavingsModal({ goal, onClose, onSaved }: { goal?: SavingsGoal; onClose:
           <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={14} /></button>
         </div>
         <div className="modal-body">
+          {error && <div className="login-error" style={{ marginBottom: 12 }}>{error}</div>}
           <div className="form-group">
             <label className="form-label">Goal Name</label>
             <input className="form-input" value={form.name} onChange={e => setForm(f => ({...f, name: e.target.value}))} placeholder="e.g. Emergency Fund" />
