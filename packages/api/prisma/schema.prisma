@@ -96,15 +96,17 @@ model Bill {
   isActive    Boolean      @default(true)
   isBusiness  Boolean      @default(false)
   payPeriod   PayPeriod
-  accountId   String?
-  debtId      String?      @unique
-  notes       String?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  accountId      String?
+  debtId         String?      @unique
+  savingsGoalId  String?      @unique
+  notes          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
-  account     Account?     @relation(fields: [accountId], references: [id])
-  debt        Debt?        @relation(fields: [debtId], references: [id], onDelete: SetNull)
-  payments    BillPayment[]
+  account        Account?     @relation(fields: [accountId], references: [id])
+  debt           Debt?        @relation(fields: [debtId], references: [id], onDelete: SetNull)
+  savingsGoal    SavingsGoal? @relation(fields: [savingsGoalId], references: [id], onDelete: SetNull)
+  payments       BillPayment[]
 }
 
 model BillPayment {
@@ -206,6 +208,7 @@ model SavingsGoal {
   updatedAt       DateTime  @updatedAt
 
   account         Account?  @relation(fields: [accountId], references: [id])
+  bill            Bill?
 }
 
 // ─── Transactions ─────────────────────────────────────────────────────────────

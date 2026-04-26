@@ -6,17 +6,18 @@ import { BillCategory, PayPeriod } from '@prisma/client'
 import { requireAdmin } from '../lib/auth-hooks'
 
 const billSchema = z.object({
-  name:       z.string().min(1),
-  amount:     z.coerce.number().positive(),
-  dueDay:     z.number().int().min(1).max(31),
-  category:   z.nativeEnum(BillCategory),
-  autoPay:    z.boolean().default(false),
-  isActive:   z.boolean().default(true),
-  isBusiness: z.boolean().default(false),
-  payPeriod:  z.nativeEnum(PayPeriod),
-  accountId:  z.string().nullish(),
-  debtId:     z.string().nullish(),
-  notes:      z.string().nullish(),
+  name:           z.string().min(1),
+  amount:         z.coerce.number().positive(),
+  dueDay:         z.number().int().min(1).max(31),
+  category:       z.nativeEnum(BillCategory),
+  autoPay:        z.boolean().default(false),
+  isActive:       z.boolean().default(true),
+  isBusiness:     z.boolean().default(false),
+  payPeriod:      z.nativeEnum(PayPeriod),
+  accountId:      z.string().nullish(),
+  debtId:         z.string().nullish(),
+  savingsGoalId:  z.string().nullish(),
+  notes:          z.string().nullish(),
 })
 
 export async function billRoutes(app: FastifyInstance) {
@@ -89,6 +90,12 @@ export async function billRoutes(app: FastifyInstance) {
           data:  { debtId: null },
         })
       }
+      if (body.data.savingsGoalId) {
+        await tx.bill.updateMany({
+          where: { savingsGoalId: body.data.savingsGoalId, id: { not: id } },
+          data:  { savingsGoalId: null },
+        })
+      }
       return tx.bill.update({ where: { id }, data: body.data })
     })
   })
@@ -134,6 +141,9 @@ export async function billRoutes(app: FastifyInstance) {
     if (bill.debtId) {
       await applyDebtPayment(bill.debtId, paidAmount)
     }
+    if (bill.savingsGoalId) {
+      await applySavingsContribution(bill.savingsGoalId, paidAmount)
+    }
 
     return payment
   })
@@ -160,6 +170,9 @@ export async function billRoutes(app: FastifyInstance) {
 
     if (bill.debtId && existing?.isPaid) {
       await applyDebtPayment(bill.debtId, -Number(existing.amount ?? bill.amount))
+    }
+    if (bill.savingsGoalId && existing?.isPaid) {
+      await applySavingsContribution(bill.savingsGoalId, -Number(existing.amount ?? bill.amount))
     }
 
     return result
@@ -209,6 +222,9 @@ export async function billRoutes(app: FastifyInstance) {
     if (bill.debtId && body.data.isPaid) {
       await applyDebtPayment(bill.debtId, body.data.amount)
     }
+    if (bill.savingsGoalId && body.data.isPaid) {
+      await applySavingsContribution(bill.savingsGoalId, body.data.amount)
+    }
 
     return result
   })
@@ -226,5 +242,22 @@ async function applyDebtPayment(debtId: string, delta: number) {
   await prisma.debt.update({
     where: { id: debtId },
     data:  { currentBalance: newBalance, isPaidOff: newBalance.eq(0) },
+  })
+}
+
+// Increment a savings goal's cashAmount by `delta` (positive when a
+// linked auto-transfer bill is paid, negative on unpay). Cash is the
+// natural landing place for an auto-transfer; the user can rebalance
+// into investedAmount via the goal edit modal.
+async function applySavingsContribution(goalId: string, delta: number) {
+  const goal = await prisma.savingsGoal.findUnique({ where: { id: goalId } })
+  if (!goal) return
+  const newCash = Decimal.max(
+    0,
+    new Decimal(goal.cashAmount.toString()).plus(delta)
+  )
+  await prisma.savingsGoal.update({
+    where: { id: goalId },
+    data:  { cashAmount: newCash },
   })
 }

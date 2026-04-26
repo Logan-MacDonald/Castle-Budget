@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { billsApi, debtsApi, type BillWithPayment, type Bill, type Debt } from '../lib/api'
+import { billsApi, debtsApi, savingsApi, type BillWithPayment, type Bill, type Debt, type SavingsGoal } from '../lib/api'
 import { Check, ChevronLeft, ChevronRight, Link2, Plus, Trash2, X } from 'lucide-react'
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
@@ -21,6 +21,7 @@ export function BillsPage() {
   const [bills, setBills] = useState<BillWithPayment[]>([])
   const [allBills, setAllBills] = useState<Bill[]>([])
   const [debts, setDebts] = useState<Debt[]>([])
+  const [savings, setSavings] = useState<SavingsGoal[]>([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
   const [editBill, setEditBill] = useState<Bill | null>(null)
@@ -28,14 +29,16 @@ export function BillsPage() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [b, all, d] = await Promise.all([
+    const [b, all, d, s] = await Promise.all([
       billsApi.monthly(month, year),
       billsApi.list(),
       debtsApi.list(),
+      savingsApi.list(),
     ])
     setBills(b)
     setAllBills(all)
     setDebts(d)
+    setSavings(s)
     setLoading(false)
   }, [month, year])
 
@@ -159,7 +162,7 @@ export function BillsPage() {
         </div>
       </div>
 
-      {showAdd && <BillModal debts={debts} onClose={() => setShowAdd(false)} onSaved={load} />}
+      {showAdd && <BillModal debts={debts} savings={savings} onClose={() => setShowAdd(false)} onSaved={load} />}
       {showRecord && (
         <RecordChargeModal
           month={month}
@@ -169,7 +172,7 @@ export function BillsPage() {
           onSaved={load}
         />
       )}
-      {editBill && <BillModal bill={editBill} debts={debts} onClose={() => setEditBill(null)} onSaved={load} />}
+      {editBill && <BillModal bill={editBill} debts={debts} savings={savings} onClose={() => setEditBill(null)} onSaved={load} />}
     </>
   )
 }
@@ -210,8 +213,8 @@ function BillSection({ title, bills, onToggle, onEdit, isEffectivelyPaid }: {
                 <div className="bill-info">
                   <div className="bill-name">
                     {bill.name}
-                    {bill.debtId && (
-                      <Link2 size={11} style={{ marginLeft: 6, opacity: 0.5 }} aria-label="Linked to a debt" />
+                    {(bill.debtId || bill.savingsGoalId) && (
+                      <Link2 size={11} style={{ marginLeft: 6, opacity: 0.5 }} aria-label="Linked" />
                     )}
                   </div>
                   <div className="bill-meta">
@@ -219,6 +222,7 @@ function BillSection({ title, bills, onToggle, onEdit, isEffectivelyPaid }: {
                     {bill.autoPay && ' · Auto-pay'}
                     {bill.isBusiness && ' · RCS'}
                     {bill.debtId && ' · Linked to debt'}
+                    {bill.savingsGoalId && ' · ↗ savings'}
                     {bill.isPaid && bill.payment?.paidAt && ` · Paid ${new Date(bill.payment.paidAt).toLocaleDateString()}`}
                   </div>
                 </div>
@@ -240,7 +244,7 @@ function BillSection({ title, bills, onToggle, onEdit, isEffectivelyPaid }: {
   )
 }
 
-function BillModal({ bill, debts, onClose, onSaved }: { bill?: Bill; debts: Debt[]; onClose: () => void; onSaved: () => void }) {
+function BillModal({ bill, debts, savings, onClose, onSaved }: { bill?: Bill; debts: Debt[]; savings: SavingsGoal[]; onClose: () => void; onSaved: () => void }) {
   const [form, setForm] = useState<Partial<Bill>>(bill ?? {
     name: '', amount: 0, dueDay: 1, category: 'OTHER', autoPay: false,
     isBusiness: false, payPeriod: 'FIRST', isActive: true,
@@ -344,6 +348,20 @@ function BillModal({ bill, debts, onClose, onSaved }: { bill?: Bill; debts: Debt
             </select>
             <div style={{ fontSize: '0.7rem', color: 'var(--neutral-500)', marginTop: 4 }}>
               When linked, marking this bill paid draws the amount from the debt's balance.
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Linked savings goal (optional)</label>
+            <select
+              className="form-input"
+              value={form.savingsGoalId ?? ''}
+              onChange={e => set('savingsGoalId', e.target.value || null)}
+            >
+              <option value="">— None —</option>
+              {savings.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+            <div style={{ fontSize: '0.7rem', color: 'var(--neutral-500)', marginTop: 4 }}>
+              For auto-transfers into a savings/brokerage account: when paid, this amount is added to the goal's cash side.
             </div>
           </div>
           <div className="form-group">
