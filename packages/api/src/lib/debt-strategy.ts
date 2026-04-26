@@ -38,41 +38,40 @@ type InternalDebt = {
 const ZERO = new Decimal(0)
 const TWELVE = new Decimal(12)
 
-function recordPayoff(
-  order: { id: string; name: string; payoffMonth: number }[],
-  debt: InternalDebt,
-  month: number,
-): void {
-  if (!order.some(o => o.id === debt.id)) {
-    order.push({ id: debt.id, name: debt.name, payoffMonth: month })
-  }
-}
-
 export function calculatePayoffStrategy(
   debts: DebtInput[],
   extraMonthlyPayment: number | string,
   method: 'snowball' | 'avalanche'
 ): StrategyResult {
-  const working: InternalDebt[] = debts.map(d => ({
-    id: d.id,
-    name: d.name,
-    balance: new Decimal(d.currentBalance),
-    interestRate: new Decimal(d.interestRate),
-    minPayment: new Decimal(d.minPayment),
-  }))
+  const working: InternalDebt[] = debts
+    .map(d => ({
+      id: d.id,
+      name: d.name,
+      balance: new Decimal(d.currentBalance),
+      interestRate: new Decimal(d.interestRate),
+      minPayment: new Decimal(d.minPayment),
+    }))
+    // Already-paid debts (balance 0) get no badge and no schedule rows.
+    .filter(d => d.balance.gt(0))
 
+  // Target order — the sequence to focus extra payments on. For
+  // snowball this is smallest balance first; for avalanche it's highest
+  // interest rate first. This is what the UI surfaces as the "payoff
+  // order" badge on each debt card. (Actual completion order can differ
+  // when a large-balance debt has a large mandatory minimum.)
   working.sort((a, b) =>
     method === 'snowball'
       ? a.balance.cmp(b.balance)
       : b.interestRate.cmp(a.interestRate)
   )
+  const targetOrder = working.map(d => ({ id: d.id, name: d.name }))
+  const payoffMonths = new Map<string, number>()
 
   const extra = new Decimal(extraMonthlyPayment)
   const totalMinPayment = working.reduce((sum, d) => sum.plus(d.minPayment), ZERO)
   const totalBudget = totalMinPayment.plus(extra)
 
   const schedule: PayoffMonth[] = []
-  const payoffOrder: { id: string; name: string; payoffMonth: number }[] = []
   const startDate = new Date()
   let totalInterest = ZERO
   let month = 0
@@ -109,7 +108,7 @@ export function calculatePayoffStrategy(
         remainingBalance: debt.balance.toDecimalPlaces(2).toNumber(),
       })
 
-      if (debt.balance.eq(0)) recordPayoff(payoffOrder, debt, month)
+      if (debt.balance.eq(0) && !payoffMonths.has(debt.id)) payoffMonths.set(debt.id, month)
     }
 
     // Extra (or rolled-over minimums) pass — apply remaining budget in method order
@@ -126,19 +125,31 @@ export function calculatePayoffStrategy(
       }
       remaining = remaining.minus(apply)
 
-      if (debt.balance.eq(0)) recordPayoff(payoffOrder, debt, month)
+      if (debt.balance.eq(0) && !payoffMonths.has(debt.id)) payoffMonths.set(debt.id, month)
     }
   }
 
   const payoffDate = new Date(startDate)
   payoffDate.setMonth(payoffDate.getMonth() + month)
 
+  // Order entries follow the *target* sequence (snowball: smallest
+  // balance first; avalanche: highest rate first), with each debt's
+  // simulated completion month attached. The badge index = attack
+  // priority; payoffMonth = when the simulation says it actually
+  // finishes (which can be earlier than the badge suggests for debts
+  // with large minimums).
+  const order = targetOrder.map(t => ({
+    id: t.id,
+    name: t.name,
+    payoffMonth: payoffMonths.get(t.id) ?? month,
+  }))
+
   return {
     method,
     totalMonths: month,
     totalInterestPaid: totalInterest.toDecimalPlaces(2).toNumber(),
     payoffDate: payoffDate.toISOString().split('T')[0],
-    order: payoffOrder,
+    order,
     schedule,
   }
 }
