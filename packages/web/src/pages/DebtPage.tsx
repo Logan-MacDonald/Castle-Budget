@@ -10,6 +10,19 @@ function pct(n: number) { return (n * 100).toFixed(2) + '%' }
 
 const DEBT_TYPES = ['CREDIT_CARD','MORTGAGE','AUTO_LOAN','PERSONAL_LOAN','STUDENT_LOAN','MEDICAL','OTHER']
 
+// Display order for the grouped sections on the Debt Payoff page (the
+// modal still uses DEBT_TYPES order for the dropdown).
+const DEBT_TYPE_ORDER = ['MORTGAGE','AUTO_LOAN','CREDIT_CARD','PERSONAL_LOAN','STUDENT_LOAN','MEDICAL','OTHER']
+const DEBT_TYPE_LABEL: Record<string, string> = {
+  MORTGAGE: 'Mortgage',
+  AUTO_LOAN: 'Auto Loan',
+  CREDIT_CARD: 'Credit Card',
+  PERSONAL_LOAN: 'Personal Loan',
+  STUDENT_LOAN: 'Student Loan',
+  MEDICAL: 'Medical',
+  OTHER: 'Other',
+}
+
 export function DebtPage() {
   const [debts, setDebts] = useState<Debt[]>([])
   const [strategy, setStrategy] = useState<StrategyResult | null>(null)
@@ -183,60 +196,78 @@ export function DebtPage() {
           </div>
         )}
 
-        {/* Debt cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
-          {loading ? (
-            <div style={{ color: 'var(--neutral-400)' }}>Loading…</div>
-          ) : debts.map(debt => {
-            const payoffOrder = strategy?.order.findIndex(o => o.id === debt.id)
-            const paidPct = debt.originalBalance > 0 ? ((debt.originalBalance - debt.currentBalance) / debt.originalBalance * 100) : 0
+        {/* Debt cards, grouped by type and alphabetised within each group */}
+        {loading ? (
+          <div style={{ color: 'var(--neutral-400)' }}>Loading…</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {DEBT_TYPE_ORDER.map(type => {
+              const group = debts
+                .filter(d => d.type === type)
+                .sort((a, b) => a.name.localeCompare(b.name))
+              if (group.length === 0) return null
+              const groupTotal = group.reduce((s, d) => s + d.currentBalance, 0)
+              return (
+                <div key={type} className="paycheck-section">
+                  <div className="paycheck-header">
+                    <span className="paycheck-label">{DEBT_TYPE_LABEL[type] ?? type}</span>
+                    <span className="paycheck-total">{fmt(groupTotal)}</span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
+                    {group.map(debt => {
+                      const payoffOrder = strategy?.order.findIndex(o => o.id === debt.id)
+                      const paidPct = debt.originalBalance > 0 ? ((debt.originalBalance - debt.currentBalance) / debt.originalBalance * 100) : 0
+                      return (
+                        <div key={debt.id} className="debt-card" onClick={() => setEditDebt(debt)} style={{ cursor: 'pointer' }}>
+                          <div className="debt-card-header">
+                            <div>
+                              <div className="debt-name">{debt.name}</div>
+                              <div className="debt-institution">{debt.institution}</div>
+                            </div>
+                            {payoffOrder !== undefined && payoffOrder >= 0 && (
+                              <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--castle-700)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700 }}>
+                                {payoffOrder + 1}
+                              </div>
+                            )}
+                          </div>
 
-            return (
-              <div key={debt.id} className="debt-card" onClick={() => setEditDebt(debt)} style={{ cursor: 'pointer' }}>
-                <div className="debt-card-header">
-                  <div>
-                    <div className="debt-name">{debt.name}</div>
-                    <div className="debt-institution">{debt.institution}</div>
-                  </div>
-                  {payoffOrder !== undefined && payoffOrder >= 0 && (
-                    <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--castle-700)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700 }}>
-                      {payoffOrder + 1}
-                    </div>
-                  )}
-                </div>
+                          <div style={{ marginBottom: 10 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--neutral-500)', marginBottom: 4 }}>
+                              <span>{paidPct.toFixed(0)}% paid</span>
+                              <span>{fmt(debt.currentBalance)}</span>
+                            </div>
+                            <div className="progress-track">
+                              <div className="progress-fill green" style={{ width: `${paidPct}%` }} />
+                            </div>
+                          </div>
 
-                <div style={{ marginBottom: 10 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--neutral-500)', marginBottom: 4 }}>
-                    <span>{paidPct.toFixed(0)}% paid</span>
-                    <span>{fmt(debt.currentBalance)}</span>
-                  </div>
-                  <div className="progress-track">
-                    <div className="progress-fill green" style={{ width: `${paidPct}%` }} />
-                  </div>
-                </div>
-
-                <div className="debt-stats">
-                  <div>
-                    <div className="debt-stat-label">Balance</div>
-                    <div className="debt-stat-value">{fmt(debt.currentBalance)}</div>
-                  </div>
-                  <div>
-                    <div className="debt-stat-label">Rate</div>
-                    <div className="debt-stat-value">{pct(debt.interestRate)}</div>
-                  </div>
-                  <div>
-                    <div className="debt-stat-label">Min Payment</div>
-                    <div className="debt-stat-value">{fmt(debt.minPayment)}</div>
-                  </div>
-                  <div>
-                    <div className="debt-stat-label">Type</div>
-                    <div className="debt-stat-value" style={{ fontSize: '0.8rem' }}>{debt.type.replace('_',' ')}</div>
+                          <div className="debt-stats">
+                            <div>
+                              <div className="debt-stat-label">Balance</div>
+                              <div className="debt-stat-value">{fmt(debt.currentBalance)}</div>
+                            </div>
+                            <div>
+                              <div className="debt-stat-label">Rate</div>
+                              <div className="debt-stat-value">{pct(debt.interestRate)}</div>
+                            </div>
+                            <div>
+                              <div className="debt-stat-label">Min Payment</div>
+                              <div className="debt-stat-value">{fmt(debt.minPayment)}</div>
+                            </div>
+                            <div>
+                              <div className="debt-stat-label">Type</div>
+                              <div className="debt-stat-value" style={{ fontSize: '0.8rem' }}>{debt.type.replace('_',' ')}</div>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
-              </div>
-            )
-          })}
-        </div>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       {showAdd && <DebtModal onClose={() => setShowAdd(false)} onSaved={load} />}
