@@ -17,6 +17,7 @@ function parseMoney(value: string | number | null | undefined): number {
 // we only touch actual money fields (not e.g. `month` or `dueDay`).
 const MONEY_FIELDS = new Set([
   'amount', 'balance', 'targetAmount', 'currentAmount',
+  'cashAmount', 'investedAmount',
   'originalBalance', 'currentBalance', 'minPayment', 'interestRate',
   'extraPayment',
   // Dashboard rollup fields:
