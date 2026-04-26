@@ -28,75 +28,48 @@ export function SavingsPage() {
     load()
   }
 
-  const totalTarget  = goals.reduce((s, g) => s + g.targetAmount, 0)
-  const totalCurrent = goals.reduce((s, g) => s + g.currentAmount, 0)
+  const cashGoals       = goals.filter(g => g.kind === 'CASH')
+  const investmentGoals = goals.filter(g => g.kind === 'INVESTMENT')
+  const cashCurrent       = cashGoals.reduce((s, g) => s + g.currentAmount, 0)
+  const investmentCurrent = investmentGoals.reduce((s, g) => s + g.currentAmount, 0)
+  const combinedCurrent   = cashCurrent + investmentCurrent
 
   return (
     <>
       <div className="page-header">
-        <h1 className="page-title">Savings Goals</h1>
+        <h1 className="page-title">Savings</h1>
         <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)}>
           <Plus size={14} /> New Goal
         </button>
       </div>
       <div className="page-body">
-        {totalTarget > 0 && (
-          <div className="card card-pad" style={{ marginBottom: 20, display: 'flex', gap: 32 }}>
-            <div>
-              <div className="stat-label">Total Saved</div>
-              <div className="stat-value positive">{fmt(totalCurrent)}</div>
-            </div>
-            <div>
-              <div className="stat-label">Total Target</div>
-              <div className="stat-value">{fmt(totalTarget)}</div>
-            </div>
-            <div>
-              <div className="stat-label">Overall Progress</div>
-              <div className="stat-value gold">{totalTarget ? Math.round(totalCurrent/totalTarget*100) : 0}%</div>
-            </div>
+        {/* Pool totals — Cash, Investments, Combined */}
+        <div className="stat-grid" style={{ marginBottom: 24 }}>
+          <div className="stat-tile">
+            <div className="stat-label">Cash</div>
+            <div className="stat-value positive">{fmt(cashCurrent)}</div>
+            <div className="stat-sub">{cashGoals.length} {cashGoals.length === 1 ? 'goal' : 'goals'}</div>
           </div>
-        )}
+          <div className="stat-tile">
+            <div className="stat-label">Investments</div>
+            <div className="stat-value">{fmt(investmentCurrent)}</div>
+            <div className="stat-sub">{investmentGoals.length} {investmentGoals.length === 1 ? 'goal' : 'goals'}</div>
+          </div>
+          <div className="stat-tile">
+            <div className="stat-label">Combined</div>
+            <div className="stat-value gold">{fmt(combinedCurrent)}</div>
+            <div className="stat-sub">across {goals.length} {goals.length === 1 ? 'goal' : 'goals'}</div>
+          </div>
+        </div>
 
-        {loading ? <div style={{ color: 'var(--neutral-400)' }}>Loading…</div> : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
-            {goals.map(g => {
-              const pct = g.targetAmount > 0 ? Math.min(100, Math.round(g.currentAmount / g.targetAmount * 100)) : 0
-              return (
-                <div key={g.id} className="card card-pad">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>{g.name}</div>
-                      {g.targetDate && (
-                        <div style={{ fontSize: '0.75rem', color: 'var(--neutral-500)', marginTop: 2 }}>
-                          Target: {new Date(g.targetDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
-                        </div>
-                      )}
-                    </div>
-                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                      {g.isComplete && <span className="badge badge-green">Complete</span>}
-                      <button className="btn btn-ghost btn-sm" onClick={() => setEditGoal(g)} title="Edit goal"><Pencil size={12} /></button>
-                    </div>
-                  </div>
-
-                  <div style={{ marginBottom: 12 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--neutral-500)', marginBottom: 5 }}>
-                      <span>{fmt(g.currentAmount)}</span>
-                      <span>{fmt(g.targetAmount)}</span>
-                    </div>
-                    <div className="progress-track">
-                      <div className="progress-fill gold" style={{ width: `${pct}%` }} />
-                    </div>
-                    <div style={{ textAlign: 'right', fontSize: '0.72rem', color: 'var(--neutral-400)', marginTop: 3 }}>{pct}%</div>
-                  </div>
-
-                  {!g.isComplete && (
-                    <button className="btn btn-ghost btn-sm" style={{ width: '100%', justifyContent: 'center' }} onClick={() => setContribute(g)}>
-                      + Add Contribution
-                    </button>
-                  )}
-                </div>
-              )
-            })}
+        {loading ? <div style={{ color: 'var(--neutral-400)' }}>Loading…</div> : goals.length === 0 ? (
+          <div className="card card-pad" style={{ color: 'var(--neutral-400)', textAlign: 'center' }}>
+            No savings goals yet. Add your first goal to get started.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <SavingsSection title="Cash" goals={cashGoals} onEdit={setEditGoal} onContribute={setContribute} />
+            <SavingsSection title="Investments" goals={investmentGoals} onEdit={setEditGoal} onContribute={setContribute} />
           </div>
         )}
       </div>
@@ -128,8 +101,66 @@ export function SavingsPage() {
   )
 }
 
+function SavingsSection({ title, goals, onEdit, onContribute }: {
+  title: string
+  goals: SavingsGoal[]
+  onEdit: (g: SavingsGoal) => void
+  onContribute: (g: SavingsGoal) => void
+}) {
+  if (goals.length === 0) return null
+  const total = goals.reduce((s, g) => s + g.currentAmount, 0)
+  return (
+    <div className="paycheck-section">
+      <div className="paycheck-header">
+        <span className="paycheck-label">{title}</span>
+        <span className="paycheck-total">{fmt(total)}</span>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
+        {goals.map(g => {
+          const pct = g.targetAmount > 0 ? Math.min(100, Math.round(g.currentAmount / g.targetAmount * 100)) : 0
+          return (
+            <div key={g.id} className="card card-pad">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>{g.name}</div>
+                  {g.targetDate && (
+                    <div style={{ fontSize: '0.75rem', color: 'var(--neutral-500)', marginTop: 2 }}>
+                      Target: {new Date(g.targetDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                  {g.isComplete && <span className="badge badge-green">Complete</span>}
+                  <button className="btn btn-ghost btn-sm" onClick={() => onEdit(g)} title="Edit goal"><Pencil size={12} /></button>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--neutral-500)', marginBottom: 5 }}>
+                  <span>{fmt(g.currentAmount)}</span>
+                  <span>{fmt(g.targetAmount)}</span>
+                </div>
+                <div className="progress-track">
+                  <div className="progress-fill gold" style={{ width: `${pct}%` }} />
+                </div>
+                <div style={{ textAlign: 'right', fontSize: '0.72rem', color: 'var(--neutral-400)', marginTop: 3 }}>{pct}%</div>
+              </div>
+
+              {!g.isComplete && (
+                <button className="btn btn-ghost btn-sm" style={{ width: '100%', justifyContent: 'center' }} onClick={() => onContribute(g)}>
+                  + Add Contribution
+                </button>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 function SavingsModal({ goal, onClose, onSaved }: { goal?: SavingsGoal; onClose: () => void; onSaved: () => void }) {
-  const [form, setForm] = useState<Partial<SavingsGoal>>(goal ?? { name: '', targetAmount: 0, startingBalance: 0, currentAmount: 0 })
+  const [form, setForm] = useState<Partial<SavingsGoal>>(goal ?? { name: '', kind: 'CASH', targetAmount: 0, startingBalance: 0, currentAmount: 0 })
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState('')
@@ -166,6 +197,19 @@ function SavingsModal({ goal, onClose, onSaved }: { goal?: SavingsGoal; onClose:
           <div className="form-group">
             <label className="form-label">Goal Name</label>
             <input className="form-input" value={form.name} onChange={e => setForm(f => ({...f, name: e.target.value}))} placeholder="e.g. Emergency Fund" />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Type</label>
+            <div style={{ display: 'flex', gap: 16 }}>
+              <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', fontSize: '0.875rem' }}>
+                <input type="radio" name="kind" checked={(form.kind ?? 'CASH') === 'CASH'} onChange={() => setForm(f => ({...f, kind: 'CASH'}))} />
+                Cash
+              </label>
+              <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', fontSize: '0.875rem' }}>
+                <input type="radio" name="kind" checked={form.kind === 'INVESTMENT'} onChange={() => setForm(f => ({...f, kind: 'INVESTMENT'}))} />
+                Investment
+              </label>
+            </div>
           </div>
           <div className="form-grid">
             <div className="form-group">

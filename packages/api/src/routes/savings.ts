@@ -2,10 +2,12 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
 import { Decimal } from 'decimal.js'
+import { SavingsKind } from '@prisma/client'
 import { requireAdmin } from '../lib/auth-hooks'
 
 const savingsSchema = z.object({
   name:            z.string().min(1),
+  kind:            z.nativeEnum(SavingsKind).default(SavingsKind.CASH),
   targetAmount:    z.coerce.number().nonnegative(),
   startingBalance: z.coerce.number().nonnegative().default(0),
   currentAmount:   z.coerce.number().nonnegative().optional(),

@@ -205,7 +205,8 @@ export type IncomeSource = {
 }
 
 export type SavingsGoal = {
-  id: string; name: string; targetAmount: number; startingBalance: number; currentAmount: number
+  id: string; name: string; kind: 'CASH' | 'INVESTMENT'
+  targetAmount: number; startingBalance: number; currentAmount: number
   targetDate?: string; isComplete: boolean; accountId?: string; notes?: string
 }
 
