@@ -50,20 +50,29 @@ export function DebtPage() {
   const totalMin = debts.reduce((s, d) => s + d.minPayment, 0)
   const paidPct = totalOriginal > 0 ? ((totalOriginal - totalDebt) / totalOriginal * 100) : 0
 
-  // Build chart data — remaining balance over time (sampled every 6 months)
+  // Build chart data — remaining balance over time (sampled every 6 months).
+  // Each point also carries the calendar label/full date so the tooltip can
+  // show e.g. "October 2026" instead of just "Mo 6". Simulation month N
+  // corresponds to today + (N - 1) calendar months.
   const chartData = strategy?.schedule
     ? (() => {
+        const today = new Date()
         const byMonth: Record<number, Record<string, number>> = {}
         for (const s of strategy.schedule) {
           if (!byMonth[s.month]) byMonth[s.month] = { month: s.month }
           byMonth[s.month][s.debtId] = (byMonth[s.month][s.debtId] ?? 0) + s.remainingBalance
         }
         const months = Object.values(byMonth).filter(m => m.month % 6 === 0 || m.month === 1)
-        const totals = months.map(m => {
+        return months.map(m => {
           const total = Object.entries(m).filter(([k]) => k !== 'month').reduce((s, [,v]) => s + (v as number), 0)
-          return { month: `Mo ${m.month}`, total: Math.round(total) }
+          const date = new Date(today)
+          date.setMonth(today.getMonth() + (m.month as number) - 1)
+          return {
+            label:    date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }), // "Oct '26"
+            fullDate: date.toLocaleDateString('en-US', { month: 'long',  year: 'numeric'  }), // "October 2026"
+            total:    Math.round(total),
+          }
         })
-        return totals
       })()
     : []
 
@@ -187,9 +196,12 @@ export function DebtPage() {
                     <stop offset="95%" stopColor="var(--castle-500)" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                 <YAxis tickFormatter={v => `$${(v/1000).toFixed(0)}k`} tick={{ fontSize: 11 }} />
-                <Tooltip formatter={(v: number) => fmt(v)} />
+                <Tooltip
+                  formatter={(v: number) => fmt(v)}
+                  labelFormatter={(_label, payload) => payload?.[0]?.payload?.fullDate ?? ''}
+                />
                 <Area type="monotone" dataKey="total" stroke="var(--castle-500)" fill="url(#debtGrad)" strokeWidth={2} name="Total Debt" />
               </AreaChart>
             </ResponsiveContainer>
