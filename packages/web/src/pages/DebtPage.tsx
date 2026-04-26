@@ -121,6 +121,40 @@ export function DebtPage() {
             Couldn't load the debt strategy: {loadError}. <button className="btn btn-ghost btn-sm" onClick={load}>Retry</button>
           </div>
         )}
+
+        {/* Strategy warnings — debts whose minimums are below their
+            monthly interest, so balances grow until extra lands. */}
+        {strategy?.warnings && strategy.warnings.length > 0 && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: '12px 14px',
+              borderRadius: 8,
+              background: 'var(--warning-bg, #fff7e6)',
+              border: '1px solid var(--warning, #b7791f)',
+              color: 'var(--warning, #7c5c1a)',
+              fontSize: '0.85rem',
+            }}
+            role="alert"
+          >
+            <div style={{ fontWeight: 600, marginBottom: 6 }}>
+              ⚠ {strategy.warnings.length} debt{strategy.warnings.length === 1 ? '' : 's'} growing under minimum payment
+            </div>
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {strategy.warnings.map((w, i) => <li key={i}>{w}</li>)}
+            </ul>
+            {strategy.methodSuggestion === 'avalanche' && method === 'snowball' && (
+              <div style={{ marginTop: 8 }}>
+                The Avalanche method targets the highest-rate debt first and would head off this growth.
+                {' '}
+                <button className="btn btn-ghost btn-sm" onClick={() => setMethod('avalanche')}>
+                  Switch to Avalanche
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Summary */}
         <div className="stat-grid" style={{ marginBottom: 24 }}>
           <div className="stat-tile">

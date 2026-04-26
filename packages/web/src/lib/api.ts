@@ -200,6 +200,8 @@ export type StrategyResult = {
   method: string; totalMonths: number; totalInterestPaid: number; payoffDate: string
   order: { id: string; name: string; payoffMonth: number }[]
   schedule: { month: number; year: number; debtId: string; payment: number; remainingBalance: number }[]
+  warnings?: string[]
+  methodSuggestion?: 'snowball' | 'avalanche'
 }
 
 export type IncomeSource = {

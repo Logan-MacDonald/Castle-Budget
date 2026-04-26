@@ -25,6 +25,8 @@ export type StrategyResult = {
   payoffDate: string
   order: { id: string; name: string; payoffMonth: number }[]
   schedule: PayoffMonth[]
+  warnings?: string[]
+  methodSuggestion?: 'snowball' | 'avalanche'
 }
 
 type InternalDebt = {

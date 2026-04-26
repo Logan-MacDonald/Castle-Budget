@@ -56,6 +56,28 @@ export async function debtRoutes(app: FastifyInstance) {
     // No special-case for empty: calculatePayoffStrategy handles []
     // and returns a well-shaped StrategyResult with empty order/schedule.
 
+    // Detect debts whose monthly interest exceeds their minimum
+    // payment. Under snowball these are left on bare minimums until
+    // their turn, so they compound exponentially before any extra
+    // payment lands — the chart shows a rising curve and the simulation
+    // hits MAX_MONTHS. Surface this so the UI can warn instead of
+    // looking glitched.
+    const warnings: string[] = []
+    let anyGrowing = false
+    for (const d of debts) {
+      const bal  = Number(d.currentBalance)
+      const rate = Number(d.interestRate)
+      const min  = Number(d.minPayment)
+      if (min <= 0 || bal <= 0) continue
+      const monthlyInterest = bal * rate / 12
+      if (min < monthlyInterest) {
+        anyGrowing = true
+        warnings.push(
+          `${d.name}: minimum payment ($${Math.round(min)}) is below its monthly interest (~$${Math.round(monthlyInterest)}). Balance will grow until extra payment lands here.`
+        )
+      }
+    }
+
     const result = calculatePayoffStrategy(
       debts.map(d => ({
         id: d.id,
@@ -68,7 +90,13 @@ export async function debtRoutes(app: FastifyInstance) {
       query.data.method
     )
 
-    return result
+    // If snowball is leaving a high-rate debt to grow, suggest
+    // avalanche — it would target the highest rate first and head
+    // off the runaway.
+    const methodSuggestion =
+      query.data.method === 'snowball' && anyGrowing ? 'avalanche' : undefined
+
+    return { ...result, warnings, methodSuggestion }
   })
 
   // POST /api/debts
