@@ -14,6 +14,20 @@ const PAY_PERIOD_LABEL: Record<string, string> = {
   FIRST: '1st', FIFTEENTH: '15th', BOTH: 'Both', MONTHLY: 'Monthly', ANNUAL: 'Annual', VARIABLE: 'Variable'
 }
 
+const CATEGORY_LABEL: Record<string, string> = {
+  AUTO: 'Auto',
+  BUSINESS: 'Business',
+  CHILDCARE: 'Childcare',
+  DEBT_PAYMENT: 'Debt Payment',
+  HEALTHCARE: 'Healthcare',
+  HOUSING: 'Housing',
+  INSURANCE: 'Insurance',
+  OTHER: 'Other',
+  SAVINGS_TRANSFER: 'Savings Transfer',
+  SUBSCRIPTION: 'Subscription',
+  UTILITIES: 'Utilities',
+}
+
 export function BillsPage() {
   const now = new Date()
   const [month, setMonth] = useState(now.getMonth() + 1)
@@ -26,6 +40,16 @@ export function BillsPage() {
   const [showAdd, setShowAdd] = useState(false)
   const [editBill, setEditBill] = useState<Bill | null>(null)
   const [showRecord, setShowRecord] = useState(false)
+  const [view, setView] = useState<'period' | 'category'>(() => {
+    try {
+      const v = localStorage.getItem('castle-budget:bills-view')
+      return v === 'category' ? 'category' : 'period'
+    } catch { return 'period' }
+  })
+
+  useEffect(() => {
+    try { localStorage.setItem('castle-budget:bills-view', view) } catch { /* noop */ }
+  }, [view])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -99,6 +123,10 @@ export function BillsPage() {
             <span className="month-label">{MONTHS[month - 1]} {year}</span>
             <button className="btn btn-ghost btn-sm" onClick={nextMonth}><ChevronRight size={14} /></button>
           </div>
+          <div className="tabs" style={{ width: 240 }}>
+            <button className={`tab-btn${view === 'period' ? ' active' : ''}`} onClick={() => setView('period')}>By pay period</button>
+            <button className={`tab-btn${view === 'category' ? ' active' : ''}`} onClick={() => setView('category')}>By category</button>
+          </div>
           <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)}>
             <Plus size={14} /> Add Bill
           </button>
@@ -138,11 +166,31 @@ export function BillsPage() {
             <div className="card card-pad" style={{ color: 'var(--neutral-400)', textAlign: 'center' }}>
               No bills set up yet. Add your first bill to get started.
             </div>
-          ) : (
+          ) : view === 'period' ? (
             <>
               <BillSection title="1st Paycheck Bills" bills={firstBills} onToggle={togglePaid} onEdit={setEditBill} isEffectivelyPaid={isEffectivelyPaid} />
               <BillSection title="15th Paycheck Bills" bills={fifteenthBills} onToggle={togglePaid} onEdit={setEditBill} isEffectivelyPaid={isEffectivelyPaid} />
               {otherBills.length > 0 && <BillSection title="Other" bills={otherBills} onToggle={togglePaid} onEdit={setEditBill} isEffectivelyPaid={isEffectivelyPaid} />}
+            </>
+          ) : (
+            // By category — alphabetical category names, alphabetical bill names within.
+            <>
+              {Object.keys(CATEGORY_LABEL).sort().map(cat => {
+                const group = bills
+                  .filter(b => b.category === cat)
+                  .sort((a, b) => a.name.localeCompare(b.name))
+                if (group.length === 0) return null
+                return (
+                  <BillSection
+                    key={cat}
+                    title={CATEGORY_LABEL[cat]}
+                    bills={group}
+                    onToggle={togglePaid}
+                    onEdit={setEditBill}
+                    isEffectivelyPaid={isEffectivelyPaid}
+                  />
+                )
+              })}
             </>
           )}
 
