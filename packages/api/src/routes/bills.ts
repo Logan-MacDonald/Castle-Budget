@@ -67,10 +67,24 @@ export async function billRoutes(app: FastifyInstance) {
   })
 
   // POST /api/bills
+  // Bill.debtId still carries a unique constraint (one bill represents
+  // one debt's monthly payment); if the new bill claims a debtId that
+  // another bill currently holds, transparently transfer it in a
+  // transaction instead of returning P2002. savingsGoalId has no
+  // unique constraint — a goal can have many incoming contributions
+  // (recurring transfer + occasional gifts) — so it just creates.
   app.post('/', { onRequest: [requireAdmin] }, async (request, reply) => {
     const body = billSchema.safeParse(request.body)
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() })
-    return prisma.bill.create({ data: body.data })
+    return prisma.$transaction(async (tx) => {
+      if (body.data.debtId) {
+        await tx.bill.updateMany({
+          where: { debtId: body.data.debtId },
+          data:  { debtId: null },
+        })
+      }
+      return tx.bill.create({ data: body.data })
+    })
   })
 
   // PATCH /api/bills/:id
@@ -88,12 +102,6 @@ export async function billRoutes(app: FastifyInstance) {
         await tx.bill.updateMany({
           where: { debtId: body.data.debtId, id: { not: id } },
           data:  { debtId: null },
-        })
-      }
-      if (body.data.savingsGoalId) {
-        await tx.bill.updateMany({
-          where: { savingsGoalId: body.data.savingsGoalId, id: { not: id } },
-          data:  { savingsGoalId: null },
         })
       }
       return tx.bill.update({ where: { id }, data: body.data })

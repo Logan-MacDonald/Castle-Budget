@@ -98,7 +98,7 @@ model Bill {
   payPeriod   PayPeriod
   accountId      String?
   debtId         String?      @unique
-  savingsGoalId  String?      @unique
+  savingsGoalId  String?
   notes          String?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
@@ -208,7 +208,7 @@ model SavingsGoal {
   updatedAt       DateTime  @updatedAt
 
   account         Account?  @relation(fields: [accountId], references: [id])
-  bill            Bill?
+  bills           Bill[]
 }
 
 // ─── Transactions ─────────────────────────────────────────────────────────────
